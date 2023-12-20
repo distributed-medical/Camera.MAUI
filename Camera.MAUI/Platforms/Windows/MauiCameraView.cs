@@ -48,6 +48,7 @@ public sealed partial class MauiCameraView : UserControl, IDisposable
 
     internal void UpdateMirroredImage()
     {
+
         if (cameraView != null)
         {
             if(cameraView.MirroredImage)
@@ -173,7 +174,7 @@ public sealed partial class MauiCameraView : UserControl, IDisposable
             }
         }
     }
-    internal async Task<CameraResult> StartRecordingAsync(string file, Size Resolution)
+    internal async Task<CameraResult> StartRecordingAsync(string file, Size Resolution, int? fps = null, Func<int, int> heightToDesiredBitrateFunc = null, bool withAudio = true)
     {
         CameraResult result = CameraResult.Success;
 
@@ -182,6 +183,8 @@ public sealed partial class MauiCameraView : UserControl, IDisposable
             if (started) await StopCameraAsync();
             if (cameraView.Camera != null && cameraView.Microphone != null)
             {
+                
+
                 while (!mediaLoaded) await Task.Delay(50);
                 started = true;
 

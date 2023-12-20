@@ -93,7 +93,7 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
                         HasFlashUnit = device.FlashAvailable,
                         MinZoomFactor = (float)device.MinAvailableVideoZoomFactor,
                         MaxZoomFactor = (float)device.MaxAvailableVideoZoomFactor,
-                        AvailableResolutions = new() { new(1920, 1080), new(1280, 720), new(640, 480), new(352, 288) }
+                        AvailableResolutions = new() { new(3840, 2160), new(1920, 1080), new(1280, 720), new(640, 480), new(352, 288) }
                     });
                 }
                 deviceDescoverySession.Dispose();
@@ -111,7 +111,7 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
             }
         }
     }
-    public async Task<CameraResult> StartRecordingAsync(string file, Size Resolution)
+    public async Task<CameraResult> StartRecordingAsync(string file, Size Resolution, int? fps = null, Func<int, int> heightToDesiredBitrateFunc = null, bool withAudio = true)
     {
         CameraResult result = CameraResult.Success;
         if (initiated)
@@ -129,23 +129,78 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
                             640 => AVCaptureSession.Preset640x480,
                             1280 => AVCaptureSession.Preset1280x720,
                             1920 => AVCaptureSession.Preset1920x1080,
+                            3840 => AVCaptureSession.Preset3840x2160,
                             _ => AVCaptureSession.PresetPhoto
                         };
                         frames = 0;
                         captureDevice = camDevices.First(d => d.UniqueID == cameraView.Camera.DeviceId);
+
+                        {
+                            //HO Added
+                            fps ??= 30;
+
+                            //on tested ipad its 1 /33 => 33ms
+                            var cmTime = new CMTime(1, fps.Value);
+
+                            var format = captureDevice.ActiveFormat;
+
+                            //Note: ipad only return one range
+                            var frameRate = format.VideoSupportedFrameRateRanges.OrderByDescending(x => x.MaxFrameRate).First();
+                            var maxFrameRate = frameRate.MaxFrameRate;
+                            if(frameRate.MaxFrameRate < fps.Value)
+                            {
+                                cmTime = new CMTime(1, (int)frameRate.MaxFrameRate);
+                            }
+
+                            //HO well ipad seems to ignore my settings tried with 1/10 still got 1/33
+                            captureDevice.LockForConfiguration(out var error);
+                            captureDevice.ActiveVideoMinFrameDuration = cmTime;
+                            captureDevice.ActiveVideoMaxFrameDuration = cmTime;
+                            captureDevice.UnlockForConfiguration();
+                        }
+
                         ForceAutoFocus();
                         captureInput = new AVCaptureDeviceInput(captureDevice, out var err);
+
                         captureSession.AddInput(captureInput);
                         micDevice = micDevices.First(d => d.UniqueID == cameraView.Microphone.DeviceId);
                         micInput = new AVCaptureDeviceInput(micDevice, out err);
-                        captureSession.AddInput(micInput);
+
+                        //HO changed
+                        //captureSession.AddInput(micInput);
+                        if (withAudio)
+                        {
+                            captureSession.AddInput(micInput);
+                        }
 
                         captureSession.AddOutput(videoDataOutput);
                         recordOutput = new AVCaptureMovieFileOutput();
-                        captureSession.AddOutput(recordOutput);
 
+
+
+
+                        captureSession.AddOutput(recordOutput);
                         var movieFileOutputConnection = recordOutput.Connections[0];
                         movieFileOutputConnection.VideoOrientation = (AVCaptureVideoOrientation)UIDevice.CurrentDevice.Orientation;
+
+
+                        var settings = recordOutput.GetOutputSettings(movieFileOutputConnection);
+                        var sub = settings[AVVideo.CompressionPropertiesKey];  //AVVideoCompressionPropertiesKey
+                        if (sub != null)
+                        {
+                            //IPAD testad had value 4_847_616 
+                            var bitrate = heightToDesiredBitrateFunc?.Invoke((int)Resolution.Height) ?? 10_000_000;
+
+                            sub.SetValueForKey(new NSString(bitrate.ToString()), AVVideo.AverageBitRateKey);
+
+                            var newSettings = new NSDictionary(
+                                AVVideo.CompressionPropertiesKey, sub,
+                                AVVideo.CodecKey, settings[AVVideo.CodecKey]
+                            );
+                            recordOutput.SetOutputSettings(newSettings, movieFileOutputConnection);
+                        }
+
+
                         captureSession.StartRunning();
                         if (!File.Exists(file)) File.Create(file).Close();
                         
@@ -154,8 +209,9 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
                         SetZoomFactor(cameraView.ZoomFactor);
                         started = true;
                     }
-                    catch
+                    catch(Exception ex)
                     {
+                        _ = ex;
                         result = CameraResult.AccessError;
                     }
                 }
@@ -192,6 +248,7 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
                             640 => AVCaptureSession.Preset640x480,
                             1280 => AVCaptureSession.Preset1280x720,
                             1920 => AVCaptureSession.Preset1920x1080,
+                            3840 => AVCaptureSession.Preset3840x2160,
                             _ => AVCaptureSession.PresetPhoto
                         };
                         frames = 0;

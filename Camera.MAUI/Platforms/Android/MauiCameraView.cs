@@ -17,6 +17,7 @@ using Android.OS;
 using Android.Renderscripts;
 using RectF = Android.Graphics.RectF;
 using Android.Content.Res;
+using Java.Util.Functions;
 
 namespace Camera.MAUI.Platforms.Android;
 
@@ -139,7 +140,7 @@ internal class MauiCameraView: GridLayout
         }
     }
 
-    internal async Task<CameraResult> StartRecordingAsync(string file, Microsoft.Maui.Graphics.Size Resolution)
+    internal async Task<CameraResult> StartRecordingAsync(string file, Microsoft.Maui.Graphics.Size Resolution, int? fps = null, Func<int, int> bitrate = null, bool withAudio = true)
     {
         var result = CameraResult.Success;
         if (initiated && !recording)
@@ -162,20 +163,42 @@ internal class MauiCameraView: GridLayout
                         else
                             mediaRecorder = new MediaRecorder();
                         audioManager.Mode = Mode.Normal;
-                        mediaRecorder.SetAudioSource(AudioSource.Mic);
+
+                        //HO changed
+                        //mediaRecorder.SetAudioSource(AudioSource.Mic);
+                        if (withAudio)
+                        {
+                            mediaRecorder.SetAudioSource(AudioSource.Mic);
+                        }
+
                         mediaRecorder.SetVideoSource(VideoSource.Surface);
                         mediaRecorder.SetOutputFormat(OutputFormat.Mpeg4);
                         mediaRecorder.SetOutputFile(file);
-                        mediaRecorder.SetVideoEncodingBitRate(10000000);
-                        mediaRecorder.SetVideoFrameRate(30);
+
+                        //TODO: HO verify this
+                        //mediaRecorder.SetVideoEncodingBitRate(10000000);
+
+                        //TODO: HO verify this
+                        //mediaRecorder.SetVideoFrameRate(30);
+                        mediaRecorder.SetVideoFrameRate(fps ?? 30);
 
                         var maxVideoSize = ChooseMaxVideoSize(map.GetOutputSizes(Class.FromType(typeof(ImageReader))));
                         if (Resolution.Width != 0 && Resolution.Height != 0)
                             maxVideoSize = new((int)Resolution.Width, (int)Resolution.Height);
                         mediaRecorder.SetVideoSize(maxVideoSize.Width, maxVideoSize.Height);
 
+                        //TODO: HO verify this
+                        mediaRecorder.SetVideoEncodingBitRate(bitrate?.Invoke((int)Resolution.Height) ?? 10_000_000);
+
                         mediaRecorder.SetVideoEncoder(VideoEncoder.H264);
-                        mediaRecorder.SetAudioEncoder(AudioEncoder.Aac);
+
+                        //HO changed
+                        //mediaRecorder.SetAudioEncoder(AudioEncoder.Aac);
+                        if (withAudio)
+                        {
+                            mediaRecorder.SetAudioEncoder(AudioEncoder.Aac);
+                        }
+
                         IWindowManager windowManager = context.GetSystemService(Context.WindowService).JavaCast<IWindowManager>();
                         int rotation = (int)windowManager.DefaultDisplay.Rotation;
                         int orientation = ORIENTATIONS.Get(rotation);

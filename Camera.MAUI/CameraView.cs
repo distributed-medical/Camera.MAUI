@@ -467,7 +467,7 @@ public class CameraView : View, ICameraView
     /// <paramref name="file"/> Full path to file where video will be stored.
     /// <paramref name="Resolution"/> Sets the Video Resolution. It must be in Camera.AvailableResolutions. If width or height is 0, max resolution will be taken.
     /// </summary>
-    public async Task<CameraResult> StartRecordingAsync(string file, Size Resolution = default)
+    public async Task<CameraResult> StartRecordingAsync(string file, Size Resolution = default, int? fps = null, Func<int, int> heightToDesiredBitrateFunc = null, bool withAudio = true)
     {
         CameraResult result = CameraResult.AccessError;
         if (Camera != null)
@@ -479,7 +479,7 @@ public class CameraView : View, ICameraView
             }
             if (Handler != null && Handler is CameraViewHandler handler)
             {
-                result = await handler.StartRecordingAsync(file, Resolution);
+                result = await handler.StartRecordingAsync(file, Resolution, fps, heightToDesiredBitrateFunc, withAudio);
                 if (result == CameraResult.Success)
                 {
                     BarCodeResults = null;
