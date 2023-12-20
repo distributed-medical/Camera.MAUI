@@ -80,7 +80,7 @@ internal class MauiCameraView: GridLayout
             cameraView.Cameras.Clear();
             foreach (var id in cameraManager.GetCameraIdList())
             {
-                var cameraInfo = new CameraInfo { DeviceId = id, MinZoomFactor = 1 };
+                var cameraInfo = new CameraInfo { DeviceId = id, MinZoomFactor = 1f };
                 var chars = cameraManager.GetCameraCharacteristics(id);
                 if ((int)(chars.Get(CameraCharacteristics.LensFacing) as Java.Lang.Number) == (int)LensFacing.Back)
                 {
@@ -778,9 +778,23 @@ internal class MauiCameraView: GridLayout
         RectF bufferRect = new(0, 0, videoHeight, videoWidth);
         bufferRect.Offset(centerX - bufferRect.CenterX(), centerY - bufferRect.CenterY());
         txform.SetRectToRect(viewRect, bufferRect, Matrix.ScaleToFit.Fill);
-        float scale = Math.Max(
-                (float)Height / videoHeight,
-                (float)Width / videoWidth);
+
+        //HO changed
+        /*
+        */
+        float scale;
+        if (cameraView.AspectFitPreview)
+        {
+            scale = Math.Min(
+                    (float)Height / videoHeight,
+                    (float)Width / videoWidth);
+        }
+        else
+        {
+            scale = Math.Max(
+                    (float)Height / videoHeight,
+                    (float)Width / videoWidth);
+        }
         txform.PostScale(scale, scale, centerX, centerY);
 
         //txform.PostScale(scaleX, scaleY, centerX, centerY);

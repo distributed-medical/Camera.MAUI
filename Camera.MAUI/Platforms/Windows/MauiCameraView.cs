@@ -385,7 +385,10 @@ public sealed partial class MauiCameraView : UserControl, IDisposable
                 if (processQR)
                 {
                     var frame = sender.TryAcquireLatestFrame();
-                    ProcessQRImage(frame.VideoMediaFrame.SoftwareBitmap);
+                    if (frame != null)
+                    {
+                        ProcessQRImage(frame.VideoMediaFrame.SoftwareBitmap);
+                    }
                     frames = 0;
                 }
             }
