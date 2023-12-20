@@ -607,8 +607,19 @@ public class CameraView : View, ICameraView
             status = await Permissions.CheckStatusAsync<Permissions.StorageWrite>();
             if (status != PermissionStatus.Granted)
             {
+#if ANDROID
+                var major = DeviceInfo.Current.Version.Major;
+                if (major < 13)
+                { //This is no working on ANDROID >= 13 (August 15, 2022)
+                    status = await Permissions.RequestAsync<Permissions.StorageWrite>();
+                    if (status != PermissionStatus.Granted) return false;
+
+                }
+                
+#else
                 status = await Permissions.RequestAsync<Permissions.StorageWrite>();
                 if (status != PermissionStatus.Granted) return false;
+#endif
             }
         }
         return true;
