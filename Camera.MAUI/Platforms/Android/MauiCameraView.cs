@@ -502,7 +502,10 @@ internal class MauiCameraView: GridLayout
             int rotation = GetJpegOrientation();
             singleRequest.Set(CaptureRequest.JpegOrientation, rotation);
 
-            var destZoom = Math.Clamp(cameraView.ZoomFactor, 1, Math.Min(6, cameraView.Camera.MaxZoomFactor)) - 1;
+            //HO changed
+            //var destZoom = Math.Clamp(cameraView.ZoomFactor, 1, Math.Min(6, cameraView.Camera.MaxZoomFactor)) - 1;
+            var destZoom = Math.Clamp(cameraView.ZoomFactor, 1, cameraView.Camera.MaxZoomFactor) - 1;
+
             Rect m = (Rect)camChars.Get(CameraCharacteristics.SensorInfoActiveArraySize);
             int minW = (int)(m.Width() / (cameraView.Camera.MaxZoomFactor));
             int minH = (int)(m.Height() / (cameraView.Camera.MaxZoomFactor));
@@ -510,6 +513,10 @@ internal class MauiCameraView: GridLayout
             int newHeight = (int)(m.Height() - (minH * destZoom));
             Rect zoomArea = new((m.Width() - newWidth) / 2, (m.Height() - newHeight) / 2, newWidth, newHeight);
             singleRequest.Set(CaptureRequest.ScalerCropRegion, zoomArea);
+            
+            //TODO: HO a test remove later
+            var rect = singleRequest.Get(CaptureRequest.ScalerCropRegion).JavaCast<Rect>();
+            _ = rect;
 
             singleRequest.AddTarget(imgReader.Surface);
             try
@@ -679,7 +686,11 @@ internal class MauiCameraView: GridLayout
             //{
             //previewBuilder.Set(CaptureRequest.ControlZoomRatio, Math.Max(Camera.MinZoomFactor, Math.Min(zoom, Camera.MaxZoomFactor)));
             //}
-            var destZoom = Math.Clamp(zoom, 1, Math.Min(6, cameraView.Camera.MaxZoomFactor)) - 1;
+
+            //HO changed
+            //var destZoom = Math.Clamp(zoom, 1, Math.Min(6, cameraView.Camera.MaxZoomFactor)) - 1;
+            var destZoom = Math.Clamp(zoom, 1, cameraView.Camera.MaxZoomFactor) - 1;
+
             Rect m = (Rect)camChars.Get(CameraCharacteristics.SensorInfoActiveArraySize);
             int minW = (int)(m.Width() / (cameraView.Camera.MaxZoomFactor));
             int minH = (int)(m.Height() / (cameraView.Camera.MaxZoomFactor));
