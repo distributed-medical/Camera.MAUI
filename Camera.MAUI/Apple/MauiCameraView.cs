@@ -10,6 +10,7 @@ using Foundation;
 using MediaPlayer;
 using System.IO;
 using UIKit;
+using VideoToolbox;
 
 namespace Camera.MAUI.Platforms.Apple;
 
@@ -178,27 +179,73 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
 
 
 
-
                         captureSession.AddOutput(recordOutput);
                         var movieFileOutputConnection = recordOutput.Connections[0];
                         movieFileOutputConnection.VideoOrientation = (AVCaptureVideoOrientation)UIDevice.CurrentDevice.Orientation;
 
 
-                        var settings = recordOutput.GetOutputSettings(movieFileOutputConnection);
-                        var sub = settings[AVVideo.CompressionPropertiesKey];  //AVVideoCompressionPropertiesKey
-                        if (sub != null)
+
+                        /* ipad
                         {
-                            //IPAD testad had value 4_847_616 
-                            var bitrate = heightToDesiredBitrateFunc?.Invoke((int)Resolution.Height) ?? 10_000_000;
+                            {
+                                AVVideoCodecKey = hvc1;
+                                AVVideoCompressionPropertiesKey =     {
+                                    AllowFrameReordering = 1;
+                                    AllowOpenGOP = 1;
+                                    AverageBitRate = 4847616;
+                                    ExpectedFrameRate = 30;
+                                    MaxAllowedFrameQP = 41;
+                                    MaxKeyFrameIntervalDuration = 1;
+                                    MinAllowedFrameQP = 15;
+                                    Priority = 80;
+                                    ProfileLevel = "HEVC_Main_AutoLevel";
+                                    RealTime = 1;
+                                    RelaxAverageBitRateTarget = 1;
+                                };
+                                AVVideoHeightKey = 720;
+                                AVVideoWidthKey = 1280;
+                            }
+                        }
+                        */
 
-                            sub.SetValueForKey(new NSString(bitrate.ToString()), AVVideo.AverageBitRateKey);
-
+#pragma warning disable CA1422
+                        { //Set H264
                             var newSettings = new NSDictionary(
-                                AVVideo.CompressionPropertiesKey, sub,
-                                AVVideo.CodecKey, settings[AVVideo.CodecKey]
+                                AVVideo.CodecKey, AVVideo.CodecH264
                             );
                             recordOutput.SetOutputSettings(newSettings, movieFileOutputConnection);
                         }
+
+
+                        { //set bitrate, should we really do this??
+                            var settings = recordOutput.GetOutputSettings(movieFileOutputConnection);
+
+                            var sub = settings[AVVideo.CompressionPropertiesKey];  //AVVideoCompressionPropertiesKey
+
+                            if (sub != null)
+                            {
+                                //IPAD testad had value 4_847_616 
+                                var bitrate = heightToDesiredBitrateFunc?.Invoke((int)Resolution.Height) ?? 10_000_000;
+
+                                sub.SetValueForKey(new NSString(bitrate.ToString()), AVVideo.AverageBitRateKey);
+
+                                var newSettings = new NSDictionary(
+                                    AVVideo.CodecKey, AVVideo.CodecH264,
+                                    AVVideo.CompressionPropertiesKey, sub
+                                );
+                                recordOutput.SetOutputSettings(newSettings, movieFileOutputConnection);
+                            }
+                        }
+#pragma warning restore CA1422
+
+
+#if DEBUG
+                        {
+                            var settings = recordOutput.GetOutputSettings(movieFileOutputConnection);
+                            System.Diagnostics.Debug.WriteLine(settings);
+                        }
+#endif
+
 
 
                         captureSession.StartRunning();
