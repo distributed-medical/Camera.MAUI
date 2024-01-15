@@ -75,12 +75,12 @@ internal partial class CameraViewHandler : ViewHandler<CameraView, PlatformView>
         }
         return Task.Run(() => { return CameraResult.AccessError; });
     }
-    public Task<CameraResult> StartRecordingAsync(string file, Size Resolution, int? fps, Func<int, int> heightToDesiredBitrateFunc = null, bool withAudio = true)
+    public Task<CameraResult> StartRecordingAsync(string file, Size Resolution, int? fps, Func<int, int> heightToDesiredBitrateFunc = null, bool withAudio = true, int? rotation = 0)
     {
         if (PlatformView != null)
         {
 #if WINDOWS || ANDROID || IOS
-            return PlatformView.StartRecordingAsync(file, Resolution, fps, heightToDesiredBitrateFunc, withAudio);
+            return PlatformView.StartRecordingAsync(file, Resolution, fps, heightToDesiredBitrateFunc, withAudio, rotation);
 #endif
         }
         return Task.Run(() => { return CameraResult.AccessError; });
@@ -119,14 +119,14 @@ internal partial class CameraViewHandler : ViewHandler<CameraView, PlatformView>
         }
         return null;
     }
-    public Task<Stream> TakePhotoAsync(ImageFormat imageFormat)
+    public Task<Stream> TakePhotoAsync(ImageFormat imageFormat, int? rotation)
     {
         if (PlatformView != null)
         {
 #if  IOS || MACCATALYST || WINDOWS
-            return PlatformView.TakePhotoAsync(imageFormat);
+            return PlatformView.TakePhotoAsync(imageFormat, rotation);
 #elif ANDROID
-            return Task.Run(() => { return PlatformView.TakePhotoAsync(imageFormat); });
+            return Task.Run(() => { return PlatformView.TakePhotoAsync(imageFormat, rotation); });
 #endif
         }
         return Task.Run(() => { Stream result = null; return result; });

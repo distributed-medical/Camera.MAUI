@@ -476,7 +476,7 @@ public class CameraView : View, ICameraView
     /// <paramref name="file"/> Full path to file where video will be stored.
     /// <paramref name="Resolution"/> Sets the Video Resolution. It must be in Camera.AvailableResolutions. If width or height is 0, max resolution will be taken.
     /// </summary>
-    public async Task<CameraResult> StartRecordingAsync(string file, Size Resolution = default, int? fps = null, Func<int, int> heightToDesiredBitrateFunc = null, bool withAudio = true)
+    public async Task<CameraResult> StartRecordingAsync(string file, Size Resolution = default, int? fps = null, Func<int, int> heightToDesiredBitrateFunc = null, bool withAudio = true, int? rotation = null)
     {
         CameraResult result = CameraResult.AccessError;
         if (Camera != null)
@@ -488,7 +488,7 @@ public class CameraView : View, ICameraView
             }
             if (Handler != null && Handler is CameraViewHandler handler)
             {
-                result = await handler.StartRecordingAsync(file, Resolution, fps, heightToDesiredBitrateFunc, withAudio);
+                result = await handler.StartRecordingAsync(file, Resolution, fps, heightToDesiredBitrateFunc, withAudio, rotation);
                 if (result == CameraResult.Success)
                 {
                     BarCodeResults = null;
@@ -531,11 +531,11 @@ public class CameraView : View, ICameraView
     /// </summary>
     /// <param name="imageFormat">The capture image format</param>
     /// <returns>A stream with the photo info</returns>
-    public async Task<Stream> TakePhotoAsync(ImageFormat imageFormat = ImageFormat.JPEG)
+    public async Task<Stream> TakePhotoAsync(ImageFormat imageFormat = ImageFormat.JPEG, int? rotation = null)
     {
         if (Handler != null && Handler is CameraViewHandler handler)
         {
-            return await handler.TakePhotoAsync(imageFormat);
+            return await handler.TakePhotoAsync(imageFormat, rotation);
         }
         return null;
     }

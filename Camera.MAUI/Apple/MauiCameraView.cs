@@ -112,7 +112,7 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
             }
         }
     }
-    public async Task<CameraResult> StartRecordingAsync(string file, Size Resolution, int? fps = null, Func<int, int> heightToDesiredBitrateFunc = null, bool withAudio = true)
+    public async Task<CameraResult> StartRecordingAsync(string file, Size Resolution, int? fps = null, Func<int, int> heightToDesiredBitrateFunc = null, bool withAudio = true, int? rotation = null)
     {
         CameraResult result = CameraResult.Success;
         if (initiated)
@@ -424,7 +424,7 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
         }
     }
 
-    internal async Task<Stream> TakePhotoAsync(ImageFormat imageFormat)
+    internal async Task<Stream> TakePhotoAsync(ImageFormat imageFormat, int? rotation)
     {
         photoError = photoTaken = false;
         var photoSettings = AVCapturePhotoSettings.Create();
@@ -440,7 +440,19 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
             return null;
         else
         {
-            UIImageOrientation orientation = UIDevice.CurrentDevice.Orientation switch
+            var currentDeviceOrientation = UIDevice.CurrentDevice.Orientation;
+
+            //HO changed
+            if (rotation != null)
+            {
+                currentDeviceOrientation = rotation switch { 
+                    90 => UIDeviceOrientation.LandscapeLeft,
+                    180 => UIDeviceOrientation.PortraitUpsideDown,
+                    270 => UIDeviceOrientation.LandscapeRight,
+                    _ => UIDeviceOrientation.Portrait
+                };
+            }
+            UIImageOrientation orientation = currentDeviceOrientation switch
             {
                 UIDeviceOrientation.LandscapeRight => UIImageOrientation.Down,
                 UIDeviceOrientation.LandscapeLeft => UIImageOrientation.Up,
@@ -533,7 +545,8 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
                     {
                         var ciContext = new CIContext();
                         CGImage cgImage = ciContext.CreateCGImage(lastCapture, lastCapture.Extent);
-                        UIImageOrientation orientation = UIDevice.CurrentDevice.Orientation switch
+                        var deviceOrientation = UIDevice.CurrentDevice.Orientation;
+                        UIImageOrientation orientation = deviceOrientation switch
                         {
                             UIDeviceOrientation.LandscapeRight => UIImageOrientation.Down,
                             UIDeviceOrientation.LandscapeLeft => UIImageOrientation.Up,
@@ -684,6 +697,9 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
     {
         base.LayoutSubviews();
         CATransform3D transform = CATransform3D.MakeRotation(0, 0, 0, 1.0f);
+
+        //HO commented away we always do portrait
+        /*
         switch (UIDevice.CurrentDevice.Orientation)
         {
             case UIDeviceOrientation.Portrait:
@@ -699,6 +715,7 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
                 transform = CATransform3D.MakeRotation((nfloat)Math.PI / 2, 0, 0, 1.0f);
                 break;
         }
+        */
 
         PreviewLayer.Transform = transform;
         PreviewLayer.Frame = Layer.Bounds;

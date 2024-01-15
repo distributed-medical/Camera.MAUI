@@ -140,7 +140,7 @@ internal class MauiCameraView: GridLayout
         }
     }
 
-    internal async Task<CameraResult> StartRecordingAsync(string file, Microsoft.Maui.Graphics.Size Resolution, int? fps = null, Func<int, int> bitrate = null, bool withAudio = true)
+    internal async Task<CameraResult> StartRecordingAsync(string file, Microsoft.Maui.Graphics.Size Resolution, int? fps = null, Func<int, int> bitrate = null, bool withAudio = true, int? rotation = null)
     {
         var result = CameraResult.Success;
         if (initiated && !recording)
@@ -200,8 +200,16 @@ internal class MauiCameraView: GridLayout
                         }
 
                         IWindowManager windowManager = context.GetSystemService(Context.WindowService).JavaCast<IWindowManager>();
-                        int rotation = (int)windowManager.DefaultDisplay.Rotation;
-                        int orientation = ORIENTATIONS.Get(rotation);
+
+
+                        //HO changed
+                        //int rotation = (int)windowManager.DefaultDisplay.Rotation;
+                        if (!rotation.HasValue)
+                        {
+                            rotation = (int)windowManager.DefaultDisplay.Rotation;
+                        }
+
+                        int orientation = ORIENTATIONS.Get(rotation.Value);
                         mediaRecorder.SetOrientationHint(orientation);
                         mediaRecorder.Prepare();
 
@@ -476,7 +484,7 @@ internal class MauiCameraView: GridLayout
         catch { }
         return bitmap;
     }
-    internal async Task<System.IO.Stream> TakePhotoAsync(ImageFormat imageFormat)
+    internal async Task<System.IO.Stream> TakePhotoAsync(ImageFormat imageFormat, int? rotation)
     {
         MemoryStream stream = null;
         if (started && !recording)
@@ -499,7 +507,25 @@ internal class MauiCameraView: GridLayout
                         break;
                 }
             }
-            int rotation = GetJpegOrientation();
+
+            //HO changed
+            if(!rotation.HasValue )
+            {
+                IWindowManager windowManager = context.GetSystemService(Context.WindowService).JavaCast<IWindowManager>();
+                var displayRotation = windowManager.DefaultDisplay.Rotation;
+                rotation = GetJpegOrientation(displayRotation);
+            }
+            else
+            {
+                var displayRotation = rotation switch {
+                    90 => SurfaceOrientation.Rotation90,
+                    180 => SurfaceOrientation.Rotation180,
+                    270 => SurfaceOrientation.Rotation270,
+                    _ => SurfaceOrientation.Rotation0
+                }; 
+                rotation = GetJpegOrientation(displayRotation);
+            }
+
             singleRequest.Set(CaptureRequest.JpegOrientation, rotation);
 
             //HO changed
@@ -533,7 +559,7 @@ internal class MauiCameraView: GridLayout
                             if (textureView.ScaleX == -1)
                             {
                                 Matrix matrix = new();
-                                matrix.PreRotate(rotation);
+                                matrix.PreRotate(rotation.Value);
                                 matrix.PostScale(-1, 1);
                                 bitmap = Bitmap.CreateBitmap(bitmap, 0, 0, bitmap.Width, bitmap.Height, matrix, false);
                             }
@@ -844,10 +870,8 @@ internal class MauiCameraView: GridLayout
         }
         return swappedDimensions;
     }
-    private int GetJpegOrientation()
+    private int GetJpegOrientation(SurfaceOrientation displayRotation)
     {
-        IWindowManager windowManager = context.GetSystemService(Context.WindowService).JavaCast<IWindowManager>();
-        var displayRotation = windowManager.DefaultDisplay.Rotation;
         var chars = cameraManager.GetCameraCharacteristics(cameraView.Camera.DeviceId);
         int sensorOrientation = (int)(chars.Get(CameraCharacteristics.SensorOrientation) as Java.Lang.Integer);
         int deviceOrientation = displayRotation switch

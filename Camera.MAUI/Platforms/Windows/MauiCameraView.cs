@@ -174,7 +174,7 @@ public sealed partial class MauiCameraView : UserControl, IDisposable
             }
         }
     }
-    internal async Task<CameraResult> StartRecordingAsync(string file, Size Resolution, int? fps = null, Func<int, int> heightToDesiredBitrateFunc = null, bool withAudio = true)
+    internal async Task<CameraResult> StartRecordingAsync(string file, Size Resolution, int? fps = null, Func<int, int> heightToDesiredBitrateFunc = null, bool withAudio = true, int? rotation = null)
     {
         CameraResult result = CameraResult.Success;
 
@@ -438,7 +438,7 @@ public sealed partial class MauiCameraView : UserControl, IDisposable
         if (started) StopCameraAsync().Wait();
         Dispose();
     }
-    internal async Task<Stream> TakePhotoAsync(ImageFormat imageFormat)
+    internal async Task<Stream> TakePhotoAsync(ImageFormat imageFormat, int? rotation)
     {
         /*
         CameraCaptureUI cameraCaptureUI = new CameraCaptureUI();
