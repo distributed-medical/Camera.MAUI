@@ -53,6 +53,9 @@ internal class MauiCameraView: GridLayout
     private ImageReader imgReader;
 
 
+    const int _useControlZoomRatio_ApiLevel = 30;
+    //int _useControlZoomRatio_ApiLevel = 100;
+
     public MauiCameraView(Context context, CameraView cameraView) : base(context)
     {
         this.context = context;
@@ -484,6 +487,19 @@ internal class MauiCameraView: GridLayout
         catch { }
         return bitmap;
     }
+
+    private static Rect CalculateScalerRect(Rect sensorRect, Single zoomFactor)
+    {
+        Rect m = sensorRect;
+
+        var ratio = 1 / zoomFactor;
+        var w = (int)(sensorRect.Width() * ratio);
+        var dw = (sensorRect.Width() - w) / 2;
+        var h = (int)(sensorRect.Height() * ratio);
+        var dh = (sensorRect.Height() - h) / 2;
+        return new Rect(dw, dh, w + dw, h + dh);
+    }
+
     internal async Task<System.IO.Stream> TakePhotoAsync(ImageFormat imageFormat, int? rotation)
     {
         MemoryStream stream = null;
@@ -528,21 +544,17 @@ internal class MauiCameraView: GridLayout
 
             singleRequest.Set(CaptureRequest.JpegOrientation, rotation);
 
-            //HO changed
-            //var destZoom = Math.Clamp(cameraView.ZoomFactor, 1, Math.Min(6, cameraView.Camera.MaxZoomFactor)) - 1;
-            var destZoom = Math.Clamp(cameraView.ZoomFactor, 1, cameraView.Camera.MaxZoomFactor) - 1;
-
-            Rect m = (Rect)camChars.Get(CameraCharacteristics.SensorInfoActiveArraySize);
-            int minW = (int)(m.Width() / (cameraView.Camera.MaxZoomFactor));
-            int minH = (int)(m.Height() / (cameraView.Camera.MaxZoomFactor));
-            int newWidth = (int)(m.Width() - (minW * destZoom));
-            int newHeight = (int)(m.Height() - (minH * destZoom));
-            Rect zoomArea = new((m.Width() - newWidth) / 2, (m.Height() - newHeight) / 2, newWidth, newHeight);
-            singleRequest.Set(CaptureRequest.ScalerCropRegion, zoomArea);
-            
-            //TODO: HO a test remove later
-            var rect = singleRequest.Get(CaptureRequest.ScalerCropRegion).JavaCast<Rect>();
-            _ = rect;
+            var destZoom = Math.Clamp(cameraView.ZoomFactor, 1, cameraView.Camera.MaxZoomFactor);
+            if (OperatingSystem.IsAndroidVersionAtLeast(_useControlZoomRatio_ApiLevel))
+            {
+                singleRequest.Set(CaptureRequest.ControlZoomRatio, destZoom);
+            }
+            else
+            {
+                Rect sensorRect  = (Rect)camChars.Get(CameraCharacteristics.SensorInfoActiveArraySize);
+                Rect zoomedSensorArea = CalculateScalerRect(sensorRect, destZoom);
+                singleRequest.Set(CaptureRequest.ScalerCropRegion, zoomedSensorArea);
+            }
 
             singleRequest.AddTarget(imgReader.Surface);
             try
@@ -708,22 +720,18 @@ internal class MauiCameraView: GridLayout
     {
         if (previewSession != null && previewBuilder != null && cameraView.Camera != null)
         {
-            //if (OperatingSystem.IsAndroidVersionAtLeast(30))
-            //{
-            //previewBuilder.Set(CaptureRequest.ControlZoomRatio, Math.Max(Camera.MinZoomFactor, Math.Min(zoom, Camera.MaxZoomFactor)));
-            //}
+            var destZoom = Math.Clamp(cameraView.ZoomFactor, 1, cameraView.Camera.MaxZoomFactor);
+            if (OperatingSystem.IsAndroidVersionAtLeast(_useControlZoomRatio_ApiLevel))
+            {
+                previewBuilder.Set(CaptureRequest.ControlZoomRatio, destZoom);
+            }
+            else
+            {
+                Rect sensorRect = (Rect)camChars.Get(CameraCharacteristics.SensorInfoActiveArraySize);
+                Rect zoomedSensorArea = CalculateScalerRect(sensorRect, destZoom);
+                previewBuilder.Set(CaptureRequest.ScalerCropRegion, zoomedSensorArea);
+            }
 
-            //HO changed
-            //var destZoom = Math.Clamp(zoom, 1, Math.Min(6, cameraView.Camera.MaxZoomFactor)) - 1;
-            var destZoom = Math.Clamp(zoom, 1, cameraView.Camera.MaxZoomFactor) - 1;
-
-            Rect m = (Rect)camChars.Get(CameraCharacteristics.SensorInfoActiveArraySize);
-            int minW = (int)(m.Width() / (cameraView.Camera.MaxZoomFactor));
-            int minH = (int)(m.Height() / (cameraView.Camera.MaxZoomFactor));
-            int newWidth = (int)(m.Width() - (minW * destZoom));
-            int newHeight = (int)(m.Height() - (minH * destZoom));
-            Rect zoomArea = new((m.Width()-newWidth)/2, (m.Height()-newHeight)/2, newWidth, newHeight);
-            previewBuilder.Set(CaptureRequest.ScalerCropRegion, zoomArea);
             previewSession.SetRepeatingRequest(previewBuilder.Build(), null, null);
         }
     }
