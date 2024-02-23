@@ -246,6 +246,35 @@ internal class MauiCameraView: GridLayout
         texture.SetDefaultBufferSize(videoSize.Width, videoSize.Height);
 
         previewBuilder = cameraDevice.CreateCaptureRequest(recording ? CameraTemplate.Record : CameraTemplate.Preview);
+
+        //HO Old Capture.Android
+        //currentCaptureRequest = cameraDevice.CreateCaptureRequest(CameraTemplate.Preview);
+        //currentCaptureRequest.Set(CaptureRequest.ControlAfMode, (int)ControlAFMode.ContinuousVideo);
+        //currentCaptureRequest.Set(CaptureRequest.ControlAeMode, (int)ControlAEMode.On);
+#if DEBUG
+        { //HO validate the current choices
+            var controlAfMode = (int)previewBuilder.Get(CaptureRequest.ControlAfMode);
+            var str = controlAfMode switch
+            {
+                (int)ControlAFMode.ContinuousVideo => nameof(ControlAFMode.ContinuousVideo),
+                (int)ControlAFMode.ContinuousPicture => nameof(ControlAFMode.ContinuousPicture),
+                _ => controlAfMode.ToString(),
+            };
+            //Continuous auto focus mode intended for taking pictures. The camera continuously tries to focus. The speed of focus change is more aggressive than FOCUS_MODE_CONTINUOUS_VIDEO
+            System.Diagnostics.Debug.WriteLine($"{nameof(previewBuilder)}: {nameof(ControlAFMode)}: {str} ");
+        }
+        {
+            var controlAeMode = (int)previewBuilder.Get(CaptureRequest.ControlAeMode);
+            var str = controlAeMode switch
+            {
+                (int)ControlAEMode.On => nameof(ControlAEMode.On),
+                _ => controlAeMode.ToString(),
+            };
+            System.Diagnostics.Debug.WriteLine($"{nameof(previewBuilder)}: {nameof(ControlAEMode)}: {str} ");
+
+        }
+#endif
+
         var surfaces = new List<OutputConfiguration>();
         var surfaces26 = new List<Surface>();
         var previewSurface = new Surface(texture);
