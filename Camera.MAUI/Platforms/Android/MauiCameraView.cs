@@ -37,6 +37,7 @@ internal class MauiCameraView: GridLayout
     public MediaRecorder mediaRecorder;
     private CaptureRequest.Builder previewBuilder;
     private CameraDevice cameraDevice;
+    private object cameraDeviceLock = new object();
     private readonly MyCameraStateCallback stateListener;
     private Size videoSize;
     private CameraManager cameraManager;
@@ -308,24 +309,27 @@ internal class MauiCameraView: GridLayout
     }
     private void UpdatePreview()
     {
-        if (null == cameraDevice)
-            return;
+        lock(cameraDeviceLock)
+        { //HO gotta cameraDeviceLock otherwise we sometimes get exception in SetZoomFactor cause StopCamera is called in parallell
+            if (null == cameraDevice)
+                return;
 
-        try
-        {
-            previewBuilder.Set(CaptureRequest.ControlMode, Java.Lang.Integer.ValueOf((int)ControlMode.Auto));
-            //Rect m = (Rect)camChars.Get(CameraCharacteristics.SensorInfoActiveArraySize);
-            //videoSize = new Size(m.Width(), m.Height());
-            //AdjustAspectRatio(videoSize.Width, videoSize.Height);
-            AdjustAspectRatio(videoSize.Width, videoSize.Height);
-            SetZoomFactor(cameraView.ZoomFactor);
-            //previewSession.SetRepeatingRequest(previewBuilder.Build(), null, null);
-            if (recording) 
-                mediaRecorder?.Start();
-        }
-        catch (CameraAccessException e)
-        {
-            e.PrintStackTrace();
+            try
+            {
+                previewBuilder.Set(CaptureRequest.ControlMode, Java.Lang.Integer.ValueOf((int)ControlMode.Auto));
+                //Rect m = (Rect)camChars.Get(CameraCharacteristics.SensorInfoActiveArraySize);
+                //videoSize = new Size(m.Width(), m.Height());
+                //AdjustAspectRatio(videoSize.Width, videoSize.Height);
+                AdjustAspectRatio(videoSize.Width, videoSize.Height);
+                SetZoomFactor(cameraView.ZoomFactor);
+                //previewSession.SetRepeatingRequest(previewBuilder.Build(), null, null);
+                if (recording)
+                    mediaRecorder?.Start();
+            }
+            catch (CameraAccessException e)
+            {
+                e.PrintStackTrace();
+            }
         }
     }
     internal async Task<CameraResult> StartCameraAsync(Microsoft.Maui.Graphics.Size PhotosResolution)
@@ -386,44 +390,52 @@ internal class MauiCameraView: GridLayout
     internal CameraResult StopCamera()
     {
         CameraResult result = CameraResult.Success;
-        if (initiated)
+        lock(cameraDeviceLock)
         {
-            timer.Stop();
-            try
+            if (initiated)
             {
-                mediaRecorder?.Stop();
-                mediaRecorder?.Dispose();
-            } catch { }
-            try
-            {
-                backgroundThread?.QuitSafely();
-                backgroundThread?.Join();
-                backgroundThread = null;
-                backgroundHandler = null;
-                imgReader?.Dispose();
-                imgReader = null;
+                timer.Stop();
+                try
+                {
+                    mediaRecorder?.Stop();
+                    mediaRecorder?.Dispose();
+                }
+                catch { }
+                try
+                {
+                    backgroundThread?.QuitSafely();
+                    backgroundThread?.Join();
+                    backgroundThread = null;
+                    backgroundHandler = null;
+                    imgReader?.Dispose();
+                    imgReader = null;
+                }
+                catch { }
+                try
+                {
+                    previewSession?.StopRepeating();
+                    previewSession?.Dispose();
+                }
+                catch { }
+                try
+                {
+                    cameraDevice?.Close();
+                    cameraDevice?.Dispose();
+                }
+                catch { }
+                previewSession = null;
+                cameraDevice = null;
+                previewBuilder = null;
+                mediaRecorder = null;
+                started = false;
+                recording = false;
             }
-            catch { }
-            try
+            else
             {
-                previewSession?.StopRepeating();
-                previewSession?.Dispose();
-            } catch { }
-            try
-            {
-                cameraDevice?.Close();
-                cameraDevice?.Dispose();
-            } catch { }
-            previewSession = null;
-            cameraDevice = null;
-            previewBuilder = null;
-            mediaRecorder = null;
-            started = false;
-            recording = false;
+                result = CameraResult.NotInitiated;
+            }
+            return result;
         }
-        else
-            result = CameraResult.NotInitiated;
-        return result;
     }
     internal void DisposeControl()
     {
