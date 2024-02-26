@@ -796,16 +796,23 @@ internal class MauiCameraView: GridLayout
     private Size ChooseVideoSize(Size[] choices)
     {
         Size result = choices[0];
-        int diference = int.MaxValue;
+        int difference = int.MaxValue;
         bool swapped = IsDimensionSwapped();
         foreach (Size size in choices)
         {
             int w = swapped ? size.Height : size.Width;
             int h = swapped ? size.Width : size.Height;
-            if (size.Width == size.Height * 4 / 3 && w >= Width && h >= Height && size.Width * size.Height < diference)
+            bool isSensorResolution = size.Width == size.Height * 4 / 3;
+
+            //HO here we find a resolution that matches Android view size (in pixels)
+            //HO Old code looked at the Width/Heighr of the android view which may be 0 when entering here first time
+            var cameraViewWidthInPixels = cameraView.Width * DeviceDisplay.Current.MainDisplayInfo.Density;
+            var cameraViewHeightInPixels = cameraView.Height * DeviceDisplay.Current.MainDisplayInfo.Density;
+
+            if (isSensorResolution && (w >= cameraViewWidthInPixels && (h >= cameraViewHeightInPixels) && ((size.Width * size.Height) < difference)))
             {
                 result = size;
-                diference = size.Width * size.Height;
+                difference = size.Width * size.Height;
             }
         }
 
