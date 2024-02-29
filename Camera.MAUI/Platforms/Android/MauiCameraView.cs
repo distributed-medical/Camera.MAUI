@@ -534,11 +534,14 @@ internal class MauiCameraView: GridLayout
         Rect m = sensorRect;
 
         var ratio = 1 / zoomFactor;
-        var w = (int)(sensorRect.Width() * ratio);
-        var dw = (sensorRect.Width() - w) / 2;
-        var h = (int)(sensorRect.Height() * ratio);
-        var dh = (sensorRect.Height() - h) / 2;
-        return new Rect(dw, dh, w + dw, h + dh);
+        var sensorRectWidth = sensorRect.Right - sensorRect.Left;
+        var sensorRectHeight = sensorRect.Bottom - sensorRect.Top;
+
+        var w = (int)(sensorRectWidth * ratio);
+        var newLeft = (sensorRectWidth - w) / 2;
+        var h = (int)(sensorRectHeight * ratio);
+        var newTop = (sensorRectHeight - h) / 2;
+        return new Rect(newLeft, newTop, w + newLeft, h + newTop);
     }
 
     internal async Task<System.IO.Stream> TakePhotoAsync(ImageFormat imageFormat, int? rotation, int maxResolution)
