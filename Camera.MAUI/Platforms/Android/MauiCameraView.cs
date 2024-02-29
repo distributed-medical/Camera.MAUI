@@ -541,7 +541,7 @@ internal class MauiCameraView: GridLayout
         return new Rect(dw, dh, w + dw, h + dh);
     }
 
-    internal async Task<System.IO.Stream> TakePhotoAsync(ImageFormat imageFormat, int? rotation)
+    internal async Task<System.IO.Stream> TakePhotoAsync(ImageFormat imageFormat, int? rotation, int maxResolution)
     {
         MemoryStream stream = null;
         if (started && !recording)
@@ -586,16 +586,18 @@ internal class MauiCameraView: GridLayout
             singleRequest.Set(CaptureRequest.JpegOrientation, rotation);
 
             var destZoom = Math.Clamp(cameraView.ZoomFactor, 1, cameraView.Camera.MaxZoomFactor);
+            /*
             if (OperatingSystem.IsAndroidVersionAtLeast(_useControlZoomRatio_ApiLevel))
             {
                 singleRequest.Set(CaptureRequest.ControlZoomRatio, destZoom);
             }
             else
-            {
+            */
+            //{
                 Rect sensorRect  = (Rect)camChars.Get(CameraCharacteristics.SensorInfoActiveArraySize);
                 Rect zoomedSensorArea = CalculateScalerRect(sensorRect, destZoom);
                 singleRequest.Set(CaptureRequest.ScalerCropRegion, zoomedSensorArea);
-            }
+            //}
 
             singleRequest.AddTarget(imgReader.Surface);
             try
@@ -604,9 +606,21 @@ internal class MauiCameraView: GridLayout
                 while (!captureDone) await Task.Delay(50);
                 if (capturePhoto != null)
                 {
-                    if (textureView.ScaleX == -1 || imageFormat != ImageFormat.JPEG)
+                    Bitmap? bitmap = null;
+                    var resolution = zoomedSensorArea.Width() * zoomedSensorArea.Height();
+                    if (resolution > maxResolution)
+                    {   //HO honor maxResolution
+                        Matrix matrix = new();
+                        float ratio = (float)Math.Sqrt((float)maxResolution / resolution);
+                        matrix.SetScale(ratio, ratio);
+                        //HO Recommended default is to set filter to 'true' as the cost of bilinear filtering is typically minimal and the improved image quality is significant.
+                        bitmap = bitmap ?? BitmapFactory.DecodeByteArray(capturePhoto, 0, capturePhoto.Length);
+                        bitmap = Bitmap.CreateBitmap(bitmap, 0, 0, bitmap.Width, bitmap.Height, matrix, true);
+                    }
+
+                    if (bitmap != null || textureView.ScaleX == -1 || imageFormat != ImageFormat.JPEG)
                     {
-                        Bitmap bitmap = BitmapFactory.DecodeByteArray(capturePhoto, 0, capturePhoto.Length);
+                        bitmap = bitmap ?? BitmapFactory.DecodeByteArray(capturePhoto, 0, capturePhoto.Length);
                         if (bitmap != null)
                         {
                             if (textureView.ScaleX == -1)
@@ -762,11 +776,13 @@ internal class MauiCameraView: GridLayout
         if (previewSession != null && previewBuilder != null && cameraView.Camera != null)
         {
             var destZoom = Math.Clamp(cameraView.ZoomFactor, 1, cameraView.Camera.MaxZoomFactor);
+            /*
             if (OperatingSystem.IsAndroidVersionAtLeast(_useControlZoomRatio_ApiLevel))
             {
                 previewBuilder.Set(CaptureRequest.ControlZoomRatio, destZoom);
             }
             else
+            */
             {
                 Rect sensorRect = (Rect)camChars.Get(CameraCharacteristics.SensorInfoActiveArraySize);
                 Rect zoomedSensorArea = CalculateScalerRect(sensorRect, destZoom);

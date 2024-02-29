@@ -119,14 +119,14 @@ internal partial class CameraViewHandler : ViewHandler<CameraView, PlatformView>
         }
         return null;
     }
-    public Task<Stream> TakePhotoAsync(ImageFormat imageFormat, int? rotation)
+    public Task<Stream> TakePhotoAsync(ImageFormat imageFormat, int? rotation, int maxResolution)
     {
         if (PlatformView != null)
         {
 #if  IOS || MACCATALYST || WINDOWS
-            return PlatformView.TakePhotoAsync(imageFormat, rotation);
+            return PlatformView.TakePhotoAsync(imageFormat, rotation, maxResolution);
 #elif ANDROID
-            return Task.Run(() => { return PlatformView.TakePhotoAsync(imageFormat, rotation); });
+            return Task.Run(() => { return PlatformView.TakePhotoAsync(imageFormat, rotation, maxResolution); });
 #endif
         }
         return Task.Run(() => { Stream result = null; return result; });

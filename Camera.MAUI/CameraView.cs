@@ -531,11 +531,11 @@ public class CameraView : View, ICameraView
     /// </summary>
     /// <param name="imageFormat">The capture image format</param>
     /// <returns>A stream with the photo info</returns>
-    public async Task<Stream> TakePhotoAsync(ImageFormat imageFormat = ImageFormat.JPEG, int? rotation = null)
+    public async Task<Stream> TakePhotoAsync(ImageFormat imageFormat, int? rotation, int maxResolution)
     {
         if (Handler != null && Handler is CameraViewHandler handler)
         {
-            return await handler.TakePhotoAsync(imageFormat, rotation);
+            return await handler.TakePhotoAsync(imageFormat, rotation, maxResolution);
         }
         return null;
     }
