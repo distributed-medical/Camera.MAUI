@@ -18,6 +18,7 @@ using Android.Renderscripts;
 using RectF = Android.Graphics.RectF;
 using Android.Content.Res;
 using Java.Util.Functions;
+using Microsoft.Extensions.Logging;
 
 namespace Camera.MAUI.Platforms.Android;
 
@@ -56,16 +57,18 @@ internal class MauiCameraView: GridLayout
 
     const int _useControlZoomRatio_ApiLevel = 30;
     //int _useControlZoomRatio_ApiLevel = 100;
+    static Func<ILogger> _getLogger;
 
-    public MauiCameraView(Context context, CameraView cameraView) : base(context)
+    public MauiCameraView(Context context, CameraView cameraView, Func<ILogger> getLogger) : base(context)
     {
+        _getLogger = getLogger;
         this.context = context;
         this.cameraView = cameraView;
 
         textureView = new(context);
         timer = new(33.3);
         timer.Elapsed += Timer_Elapsed;
-        stateListener = new MyCameraStateCallback(this);
+        stateListener = new MyCameraStateCallback(this, _getLogger);
         photoListener = new ImageAvailableListener(this);
         AddView(textureView);
         ORIENTATIONS.Append((int)SurfaceOrientation.Rotation0, 90);
@@ -242,6 +245,8 @@ internal class MauiCameraView: GridLayout
 
     private void StartPreview()
     {
+        _getLogger?.Invoke().LogTrace($"{nameof(StartPreview)}: entered");
+
         while (textureView.SurfaceTexture == null) Thread.Sleep(100);
         SurfaceTexture texture = textureView.SurfaceTexture;
         texture.SetDefaultBufferSize(videoSize.Width, videoSize.Height);
@@ -971,12 +976,15 @@ internal class MauiCameraView: GridLayout
     private class MyCameraStateCallback : CameraDevice.StateCallback
     {
         private readonly MauiCameraView cameraView;
-        public MyCameraStateCallback(MauiCameraView camView)
+        private readonly Func<ILogger> _getLogger;
+        public MyCameraStateCallback(MauiCameraView camView, Func<ILogger> getLogger)
         {
             cameraView = camView;
+            _getLogger = getLogger;
         }
         public override void OnOpened(CameraDevice camera)
         {
+            _getLogger?.Invoke().LogTrace($"{nameof(MyCameraStateCallback)}: {nameof(OnOpened)}: entered");
             if (camera != null)
             {
                 cameraView.cameraDevice = camera;

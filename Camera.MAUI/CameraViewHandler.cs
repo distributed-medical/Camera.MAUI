@@ -1,4 +1,5 @@
-﻿using Microsoft.Maui.Handlers;
+﻿using Microsoft.Extensions.Logging;
+using Microsoft.Maui.Handlers;
 #if IOS || MACCATALYST
 using PlatformView = Camera.MAUI.Platforms.Apple.MauiCameraView;
 #elif ANDROID
@@ -13,6 +14,8 @@ namespace Camera.MAUI;
 
 internal partial class CameraViewHandler : ViewHandler<CameraView, PlatformView>
 {
+    public static ILogger? _logger = null; 
+    public static Func<ILogger?> GetLogger =>  () => _logger;
     public static IPropertyMapper<CameraView, CameraViewHandler> PropertyMapper = new PropertyMapper<CameraView, CameraViewHandler>(ViewMapper)
     {
         [nameof(CameraView.TorchEnabled)] = MapTorch,
@@ -26,7 +29,7 @@ internal partial class CameraViewHandler : ViewHandler<CameraView, PlatformView>
     {
     }
 #if ANDROID
-    protected override PlatformView CreatePlatformView() => new(Context, VirtualView);
+    protected override PlatformView CreatePlatformView() => new(Context, VirtualView, GetLogger);
 #elif IOS || MACCATALYST || WINDOWS
     protected override PlatformView CreatePlatformView() => new(VirtualView);
 #else

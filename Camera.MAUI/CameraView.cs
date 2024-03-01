@@ -1,4 +1,5 @@
 ﻿using Camera.MAUI.ZXingHelper;
+using Microsoft.Extensions.Logging;
 using Microsoft.Maui.Controls;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
@@ -306,16 +307,24 @@ public class CameraView : View, ICameraView
     internal DateTime lastSnapshot = DateTime.Now;
     internal Size PhotosResolution = new(0, 0);
 
+    public static ILogger _logger;
+
+
     public CameraView()
     {
         BarcodeReader = new BarcodeReaderGeneric();
         HandlerChanged += CameraView_HandlerChanged;
         Current = this;
     }
+
     private void CameraView_HandlerChanged(object sender, EventArgs e)
     {
         if (Handler != null)
         {
+            if(Handler is CameraViewHandler cameraViewHandler)
+            {
+                CameraViewHandler._logger = _logger;
+            }
             CamerasLoaded?.Invoke(this, EventArgs.Empty);
             MicrophonesLoaded?.Invoke(this, EventArgs.Empty);
             Self = this;
@@ -510,6 +519,7 @@ public class CameraView : View, ICameraView
         CameraResult result = CameraResult.AccessError;
         if (Handler != null && Handler is CameraViewHandler handler)
         {
+            _logger.LogTrace($"{nameof(StopCameraAsync)}: pre");
             result = await handler.StopCameraAsync();
         }
         return result;
@@ -594,6 +604,13 @@ public class CameraView : View, ICameraView
             NumMicrophonesDetected = Microphones.Count;
         });
     }
+
+    protected override void OnSizeAllocated(double width, double height)
+    {
+        Debug.WriteLine($"{nameof(CameraView)}:Size allocated width:{width} height{height}");
+    }
+
+
     public static async Task<bool> RequestPermissions(bool withMic = false, bool withStorageWrite = false)
     {
         var status = await Permissions.CheckStatusAsync<Permissions.Camera>();
