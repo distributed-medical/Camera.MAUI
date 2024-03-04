@@ -604,13 +604,6 @@ public class CameraView : View, ICameraView
             NumMicrophonesDetected = Microphones.Count;
         });
     }
-
-    protected override void OnSizeAllocated(double width, double height)
-    {
-        Debug.WriteLine($"{nameof(CameraView)}:Size allocated width:{width} height{height}");
-    }
-
-
     public static async Task<bool> RequestPermissions(bool withMic = false, bool withStorageWrite = false)
     {
         var status = await Permissions.CheckStatusAsync<Permissions.Camera>();
