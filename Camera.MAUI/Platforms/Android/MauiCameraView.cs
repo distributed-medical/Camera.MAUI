@@ -57,9 +57,9 @@ internal class MauiCameraView: GridLayout
 
     const int _useControlZoomRatio_ApiLevel = 30;
     //int _useControlZoomRatio_ApiLevel = 100;
-    static Func<ILogger> _getLogger;
+    static Func<ILogger?> _getLogger;
 
-    public MauiCameraView(Context context, CameraView cameraView, Func<ILogger> getLogger) : base(context)
+    public MauiCameraView(Context context, CameraView cameraView, Func<ILogger?> getLogger) : base(context)
     {
         _getLogger = getLogger;
         this.context = context;
@@ -206,6 +206,7 @@ internal class MauiCameraView: GridLayout
                             mediaRecorder.SetAudioEncoder(AudioEncoder.Aac);
                         }
 
+
                         IWindowManager windowManager = context.GetSystemService(Context.WindowService).JavaCast<IWindowManager>();
 
 
@@ -245,7 +246,7 @@ internal class MauiCameraView: GridLayout
 
     private void StartPreview()
     {
-        _getLogger?.Invoke().LogTrace($"{nameof(StartPreview)}: entered");
+        _getLogger()?.LogTrace($"{nameof(StartPreview)}: entered");
 
         while (textureView.SurfaceTexture == null) Thread.Sleep(100);
         SurfaceTexture texture = textureView.SurfaceTexture;
@@ -257,30 +258,6 @@ internal class MauiCameraView: GridLayout
         //currentCaptureRequest = cameraDevice.CreateCaptureRequest(CameraTemplate.Preview);
         //currentCaptureRequest.Set(CaptureRequest.ControlAfMode, (int)ControlAFMode.ContinuousVideo);
         //currentCaptureRequest.Set(CaptureRequest.ControlAeMode, (int)ControlAEMode.On);
-#if DEBUG
-        { //HO validate the current choices
-            var controlAfMode = (int)previewBuilder.Get(CaptureRequest.ControlAfMode);
-            var str = controlAfMode switch
-            {
-                (int)ControlAFMode.ContinuousVideo => nameof(ControlAFMode.ContinuousVideo),
-                (int)ControlAFMode.ContinuousPicture => nameof(ControlAFMode.ContinuousPicture),
-                _ => controlAfMode.ToString(),
-            };
-            //Continuous auto focus mode intended for taking pictures. The camera continuously tries to focus. The speed of focus change is more aggressive than FOCUS_MODE_CONTINUOUS_VIDEO
-            System.Diagnostics.Debug.WriteLine($"{nameof(previewBuilder)}: {nameof(ControlAFMode)}: {str} ");
-        }
-        {
-            var controlAeMode = (int)previewBuilder.Get(CaptureRequest.ControlAeMode);
-            var str = controlAeMode switch
-            {
-                (int)ControlAEMode.On => nameof(ControlAEMode.On),
-                _ => controlAeMode.ToString(),
-            };
-            System.Diagnostics.Debug.WriteLine($"{nameof(previewBuilder)}: {nameof(ControlAEMode)}: {str} ");
-
-        }
-#endif
-
         var surfaces = new List<OutputConfiguration>();
         var surfaces26 = new List<Surface>();
         var previewSurface = new Surface(texture);
@@ -297,6 +274,13 @@ internal class MauiCameraView: GridLayout
             surfaces.Add(new OutputConfiguration(mediaRecorder.Surface));
             surfaces26.Add(mediaRecorder.Surface);
             previewBuilder.AddTarget(mediaRecorder.Surface);
+        }
+        //HO added;
+        if(recording && cameraView.TorchEnabled)
+        {
+            _getLogger()?.LogTrace($"{nameof(StartPreview)}: {nameof(cameraView.TorchEnabled)}: Turning it on");
+            previewBuilder.Set(CaptureRequest.ControlAeMode, (int)ControlAEMode.On);
+            previewBuilder.Set(CaptureRequest.FlashMode, cameraView.TorchEnabled ? (int)ControlAEMode.OnAutoFlash : (int)ControlAEMode.Off);
         }
 
         sessionCallback = new PreviewCaptureStateCallback(this);
@@ -327,6 +311,8 @@ internal class MauiCameraView: GridLayout
                 //AdjustAspectRatio(videoSize.Width, videoSize.Height);
                 AdjustAspectRatio(videoSize.Width, videoSize.Height);
                 SetZoomFactor(cameraView.ZoomFactor);
+                //HO Added UpdateTorch //so when we reenter camera page it will always light up again
+                UpdateTorch();
                 //previewSession.SetRepeatingRequest(previewBuilder.Build(), null, null);
                 if (recording)
                     mediaRecorder?.Start();
@@ -739,6 +725,7 @@ internal class MauiCameraView: GridLayout
     {
         if (cameraView.Camera != null && cameraView.Camera.HasFlashUnit)
         {
+            _getLogger()?.LogTrace($"{nameof(UpdateTorch)}: {nameof(cameraView.TorchEnabled)}: Turning it on");
             if (started)
             {
                 previewBuilder.Set(CaptureRequest.ControlAeMode, (int)ControlAEMode.On);
@@ -976,15 +963,15 @@ internal class MauiCameraView: GridLayout
     private class MyCameraStateCallback : CameraDevice.StateCallback
     {
         private readonly MauiCameraView cameraView;
-        private readonly Func<ILogger> _getLogger;
-        public MyCameraStateCallback(MauiCameraView camView, Func<ILogger> getLogger)
+        private readonly Func<ILogger?> _getLogger;
+        public MyCameraStateCallback(MauiCameraView camView, Func<ILogger?> getLogger)
         {
             cameraView = camView;
             _getLogger = getLogger;
         }
         public override void OnOpened(CameraDevice camera)
         {
-            _getLogger?.Invoke().LogTrace($"{nameof(MyCameraStateCallback)}: {nameof(OnOpened)}: entered");
+            _getLogger()?.LogTrace($"{nameof(MyCameraStateCallback)}: {nameof(OnOpened)}: entered");
             if (camera != null)
             {
                 cameraView.cameraDevice = camera;
