@@ -257,7 +257,7 @@ internal class MauiCameraView: GridLayout
         texture.SetDefaultBufferSize(videoSize.Width, videoSize.Height);
 
         previewBuilder = cameraDevice.CreateCaptureRequest(recording ? CameraTemplate.Record : CameraTemplate.Preview);
-        
+
         //HO Old Capture.Android
         //currentCaptureRequest = cameraDevice.CreateCaptureRequest(CameraTemplate.Preview);
         //currentCaptureRequest.Set(CaptureRequest.ControlAfMode, (int)ControlAFMode.ContinuousVideo);
@@ -928,17 +928,19 @@ internal class MauiCameraView: GridLayout
         /*
         */
         float scale;
+        bool isSwapped = IsDimensionSwapped();
+
         if (cameraView.AspectFitPreview)
         {
             scale = Math.Min(
-                    (float)cameraViewSizeInPixels.Height / videoHeight,
-                    (float)cameraViewSizeInPixels.Width / videoWidth);
+                    (float)cameraViewSizeInPixels.Height / (isSwapped ? videoWidth : videoHeight),
+                    (float)cameraViewSizeInPixels.Width / (isSwapped ? videoHeight : videoWidth));
         }
         else
         {
             scale = Math.Max(
-                    (float)cameraViewSizeInPixels.Height / videoHeight,
-                    (float)cameraViewSizeInPixels.Width / videoWidth);
+                    (float)cameraViewSizeInPixels.Height / (isSwapped ? videoWidth :  videoHeight),
+                    (float)cameraViewSizeInPixels.Width / (isSwapped ? videoHeight : videoWidth));
         }
         txform.PostScale(scale, scale, centerX, centerY);
 
