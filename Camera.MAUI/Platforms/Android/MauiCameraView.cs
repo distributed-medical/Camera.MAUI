@@ -56,19 +56,19 @@ internal class MauiCameraView: GridLayout
 
 
     const int _useControlZoomRatio_ApiLevel = 30;
-    //int _useControlZoomRatio_ApiLevel = 100;
-    static Func<ILogger?> _getLogger;
+    //const int _useControlZoomRatio_ApiLevel = 100;
+    readonly ILogger _logger;
 
-    public MauiCameraView(Context context, CameraView cameraView, Func<ILogger?> getLogger) : base(context)
+    public MauiCameraView(Context context, CameraView cameraView) : base(context)
     {
-        _getLogger = getLogger;
+        _logger = MauiApplication.Current.Services.GetService<ILogger<MauiCameraView>>();
         this.context = context;
         this.cameraView = cameraView;
 
         textureView = new(context);
         timer = new(33.3);
         timer.Elapsed += Timer_Elapsed;
-        stateListener = new MyCameraStateCallback(this, _getLogger);
+        stateListener = new MyCameraStateCallback(this, _logger);
         photoListener = new ImageAvailableListener(this);
         AddView(textureView);
         ORIENTATIONS.Append((int)SurfaceOrientation.Rotation0, 90);
@@ -244,16 +244,20 @@ internal class MauiCameraView: GridLayout
         return result;
     }
 
+    
     private void StartPreview()
     {
-        _getLogger()?.LogTrace($"{nameof(StartPreview)}: entered");
+        if (_logger.IsEnabled(LogLevel.Trace))
+        {
+            _logger.LogTrace($"{nameof(StartPreview)}: entered");
+        }
 
         while (textureView.SurfaceTexture == null) Thread.Sleep(100);
         SurfaceTexture texture = textureView.SurfaceTexture;
         texture.SetDefaultBufferSize(videoSize.Width, videoSize.Height);
 
         previewBuilder = cameraDevice.CreateCaptureRequest(recording ? CameraTemplate.Record : CameraTemplate.Preview);
-
+        
         //HO Old Capture.Android
         //currentCaptureRequest = cameraDevice.CreateCaptureRequest(CameraTemplate.Preview);
         //currentCaptureRequest.Set(CaptureRequest.ControlAfMode, (int)ControlAFMode.ContinuousVideo);
@@ -278,7 +282,9 @@ internal class MauiCameraView: GridLayout
         //HO added;
         if(recording && cameraView.TorchEnabled)
         {
-            _getLogger()?.LogTrace($"{nameof(StartPreview)}: {nameof(cameraView.TorchEnabled)}: Turning it on");
+            if(_logger.IsEnabled(LogLevel.Trace)) {
+                _logger.LogTrace($"{nameof(StartPreview)}: {nameof(cameraView.TorchEnabled)}: Turning it on");
+            }
             previewBuilder.Set(CaptureRequest.ControlAeMode, (int)ControlAEMode.On);
             previewBuilder.Set(CaptureRequest.FlashMode, cameraView.TorchEnabled ? (int)ControlAEMode.OnAutoFlash : (int)ControlAEMode.Off);
         }
@@ -507,7 +513,8 @@ internal class MauiCameraView: GridLayout
                 float xscale = (float)oriWidth / bitmap.Width;
                 float yscale = (float)oriHeight / bitmap.Height;
                 //bitmap = Bitmap.CreateBitmap(bitmap, Math.Abs(bitmap.Width - (int)((float)Width*xscale)) / 2, Math.Abs(bitmap.Height - (int)((float)Height * yscale)) / 2, Width, Height);
-                bitmap = Bitmap.CreateBitmap(bitmap, 0, 0, Width, Height);
+                var cameraViewSizeInPixels = GetCameraViewSizeInPixels();
+                                bitmap = Bitmap.CreateBitmap(bitmap, 0, 0, (int)cameraViewSizeInPixels.Width, (int)cameraViewSizeInPixels.Height);
                 if (textureView.ScaleX == -1)
                 {
                     Matrix matrix = new();
@@ -535,12 +542,20 @@ internal class MauiCameraView: GridLayout
         return new Rect(newLeft, newTop, w + newLeft, h + newTop);
     }
 
+    string CreateLogStringForRect(Rect rect)
+    {
+        return $"|L:{rect.Left} T:{rect.Top} R:{rect.Right} B:{rect.Bottom} W:{rect.Width()} H:{rect.Height()}|";
+    }
+
+
     internal async Task<System.IO.Stream> TakePhotoAsync(ImageFormat imageFormat, int? rotation, int maxResolution)
     {
         MemoryStream stream = null;
         if (started && !recording)
         {
             CaptureRequest.Builder singleRequest = cameraDevice.CreateCaptureRequest(CameraTemplate.StillCapture);
+            //singleRequest.AddTarget(imgReader.Surface);
+
             captureDone = false;
             capturePhoto = null;
             if (cameraView.Camera.HasFlashUnit)
@@ -580,28 +595,32 @@ internal class MauiCameraView: GridLayout
             singleRequest.Set(CaptureRequest.JpegOrientation, rotation);
 
             var destZoom = Math.Clamp(cameraView.ZoomFactor, 1, cameraView.Camera.MaxZoomFactor);
-            /*
+            Rect sensorRect = (Rect)camChars.Get(CameraCharacteristics.SensorInfoActiveArraySize);
+            Rect zoomedSensorArea = CalculateScalerRect(sensorRect, destZoom);
             if (OperatingSystem.IsAndroidVersionAtLeast(_useControlZoomRatio_ApiLevel))
             {
                 singleRequest.Set(CaptureRequest.ControlZoomRatio, destZoom);
             }
             else
-            */
-            //{
-                Rect sensorRect  = (Rect)camChars.Get(CameraCharacteristics.SensorInfoActiveArraySize);
-                Rect zoomedSensorArea = CalculateScalerRect(sensorRect, destZoom);
+            {
                 singleRequest.Set(CaptureRequest.ScalerCropRegion, zoomedSensorArea);
-            //}
+            }
 
             singleRequest.AddTarget(imgReader.Surface);
             try
             {
-                previewSession.Capture(singleRequest.Build(), null, null);
+                var captureRequest = singleRequest.Build();
+                previewSession.Capture(captureRequest, null, null);
                 while (!captureDone) await Task.Delay(50);
                 if (capturePhoto != null)
                 {
-                    Bitmap? bitmap = null;
+                    Bitmap bitmap = null;
                     var resolution = zoomedSensorArea.Width() * zoomedSensorArea.Height();
+
+                    if (_logger.IsEnabled(LogLevel.Trace))
+                    {
+                        _logger.LogTrace($"{nameof(TakePhotoAsync)}: 10: SensorRect: {CreateLogStringForRect(sensorRect)} zoomedSensorArea: {CreateLogStringForRect(zoomedSensorArea)}");
+                    }
                     if (resolution > maxResolution)
                     {   //HO honor maxResolution
                         Matrix matrix = new();
@@ -611,7 +630,10 @@ internal class MauiCameraView: GridLayout
                         bitmap = bitmap ?? BitmapFactory.DecodeByteArray(capturePhoto, 0, capturePhoto.Length);
                         bitmap = Bitmap.CreateBitmap(bitmap, 0, 0, bitmap.Width, bitmap.Height, matrix, true);
                     }
-
+                    if (_logger.IsEnabled(LogLevel.Trace))
+                    {
+                        _logger.LogTrace($"{nameof(TakePhotoAsync)}: 20: TextureView: {textureView.ToString()} ScaleX:{textureView.ScaleX} ScaleY: {textureView.ScaleY}");
+                    }
                     if (bitmap != null || textureView.ScaleX == -1 || imageFormat != ImageFormat.JPEG)
                     {
                         bitmap = bitmap ?? BitmapFactory.DecodeByteArray(capturePhoto, 0, capturePhoto.Length);
@@ -725,7 +747,9 @@ internal class MauiCameraView: GridLayout
     {
         if (cameraView.Camera != null && cameraView.Camera.HasFlashUnit)
         {
-            _getLogger()?.LogTrace($"{nameof(UpdateTorch)}: {nameof(cameraView.TorchEnabled)}: Turning it on");
+            if (_logger.IsEnabled(LogLevel.Trace)) {
+                _logger.LogTrace($"{nameof(UpdateTorch)}: {nameof(cameraView.TorchEnabled)}: Turning it on");
+            }
             if (started)
             {
                 previewBuilder.Set(CaptureRequest.ControlAeMode, (int)ControlAEMode.On);
@@ -771,13 +795,11 @@ internal class MauiCameraView: GridLayout
         if (previewSession != null && previewBuilder != null && cameraView.Camera != null)
         {
             var destZoom = Math.Clamp(cameraView.ZoomFactor, 1, cameraView.Camera.MaxZoomFactor);
-            /*
             if (OperatingSystem.IsAndroidVersionAtLeast(_useControlZoomRatio_ApiLevel))
             {
                 previewBuilder.Set(CaptureRequest.ControlZoomRatio, destZoom);
             }
             else
-            */
             {
                 Rect sensorRect = (Rect)camChars.Get(CameraCharacteristics.SensorInfoActiveArraySize);
                 Rect zoomedSensorArea = CalculateScalerRect(sensorRect, destZoom);
@@ -816,27 +838,55 @@ internal class MauiCameraView: GridLayout
 
         return result;
     }
+
+    Size GetCameraViewSizeInPixels()
+    {
+
+        var displayHeight =DeviceDisplay.Current.MainDisplayInfo.Height;
+
+
+        //var cameraViewWidthInPixels = (int)Math.Round(cameraView.Width);
+        //var cameraViewHeightInPixels = (int)Math.Round(cameraView.Height);
+        var cameraViewWidthInPixels = (int)Math.Round(cameraView.Width * DeviceDisplay.Current.MainDisplayInfo.Density);
+        var cameraViewHeightInPixels = (int)Math.Round(cameraView.Height * DeviceDisplay.Current.MainDisplayInfo.Density);
+        return new Size(cameraViewWidthInPixels, cameraViewHeightInPixels);
+    }
+
+
     private Size ChooseVideoSize(Size[] choices)
     {
         Size result = choices[0];
-        int difference = int.MaxValue;
+        int currentResolution = 0;
         bool swapped = IsDimensionSwapped();
+
+        //from smaller to larger
+        choices = choices.OrderBy(x => x.Width * x.Height).ToArray();
+
         foreach (Size size in choices)
         {
             int w = swapped ? size.Height : size.Width;
             int h = swapped ? size.Width : size.Height;
             bool isSensorResolution = size.Width == size.Height * 4 / 3;
-
-            //HO here we find a resolution that matches Android view size (in pixels)
-            //HO Old code looked at the Width/Heighr of the android view which may be 0 when entering here first time
-            var cameraViewWidthInPixels = cameraView.Width * DeviceDisplay.Current.MainDisplayInfo.Density;
-            var cameraViewHeightInPixels = cameraView.Height * DeviceDisplay.Current.MainDisplayInfo.Density;
-
-            if (isSensorResolution && (w >= cameraViewWidthInPixels && (h >= cameraViewHeightInPixels) && ((size.Width * size.Height) < difference)))
+            bool hasFoundBestSensorResolution = false;
+            if(isSensorResolution)
             {
-                result = size;
-                difference = size.Width * size.Height;
+                //HO here we find a resolution that matches Android view size (in pixels)
+                //HO Old code looked at the Width/Heighr of the android view which may be 0 when entering here first time
+                //Android view Width Height is given in pixels so convert (maui) cameraView dimensions to pixels
+                var cameraViewSizeInPixels = GetCameraViewSizeInPixels();
+
+
+                if (!hasFoundBestSensorResolution ||  ((size.Width * size.Height) > currentResolution))
+                {
+                    if((w >= cameraViewSizeInPixels.Width) && (h >= cameraViewSizeInPixels.Height))
+                    {
+                        hasFoundBestSensorResolution = true;
+                    }
+                    result = size;
+                    currentResolution = size.Width * size.Height;
+                }
             }
+
         }
 
         return result;
@@ -865,7 +915,9 @@ internal class MauiCameraView: GridLayout
             scaleY = 1;
         }
         */
-        RectF viewRect = new(0, 0, Width, Height);
+        var cameraViewSizeInPixels = GetCameraViewSizeInPixels();
+
+        RectF viewRect = new(0, 0, (float)cameraViewSizeInPixels.Width, (float)cameraViewSizeInPixels.Height);
         float centerX = viewRect.CenterX();
         float centerY = viewRect.CenterY();
         RectF bufferRect = new(0, 0, videoHeight, videoWidth);
@@ -879,14 +931,14 @@ internal class MauiCameraView: GridLayout
         if (cameraView.AspectFitPreview)
         {
             scale = Math.Min(
-                    (float)Height / videoHeight,
-                    (float)Width / videoWidth);
+                    (float)cameraViewSizeInPixels.Height / videoHeight,
+                    (float)cameraViewSizeInPixels.Width / videoWidth);
         }
         else
         {
             scale = Math.Max(
-                    (float)Height / videoHeight,
-                    (float)Width / videoWidth);
+                    (float)cameraViewSizeInPixels.Height / videoHeight,
+                    (float)cameraViewSizeInPixels.Width / videoWidth);
         }
         txform.PostScale(scale, scale, centerX, centerY);
 
@@ -963,15 +1015,17 @@ internal class MauiCameraView: GridLayout
     private class MyCameraStateCallback : CameraDevice.StateCallback
     {
         private readonly MauiCameraView cameraView;
-        private readonly Func<ILogger?> _getLogger;
-        public MyCameraStateCallback(MauiCameraView camView, Func<ILogger?> getLogger)
+        private readonly ILogger _logger;
+        public MyCameraStateCallback(MauiCameraView camView, ILogger logger)
         {
             cameraView = camView;
-            _getLogger = getLogger;
+            _logger = logger;
         }
         public override void OnOpened(CameraDevice camera)
         {
-            _getLogger()?.LogTrace($"{nameof(MyCameraStateCallback)}: {nameof(OnOpened)}: entered");
+            if (_logger.IsEnabled(LogLevel.Trace)) {
+                _logger.LogTrace($"{nameof(MyCameraStateCallback)}: {nameof(OnOpened)}: entered");
+            }  
             if (camera != null)
             {
                 cameraView.cameraDevice = camera;

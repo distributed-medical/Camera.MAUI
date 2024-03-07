@@ -321,10 +321,6 @@ public class CameraView : View, ICameraView
     {
         if (Handler != null)
         {
-            if(Handler is CameraViewHandler cameraViewHandler)
-            {
-                CameraViewHandler._logger = _logger;
-            }
             CamerasLoaded?.Invoke(this, EventArgs.Empty);
             MicrophonesLoaded?.Invoke(this, EventArgs.Empty);
             Self = this;
