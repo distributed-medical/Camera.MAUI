@@ -162,7 +162,8 @@ internal class MauiCameraView: GridLayout
                         camChars = cameraManager.GetCameraCharacteristics(cameraView.Camera.DeviceId);
 
                         StreamConfigurationMap map = (StreamConfigurationMap)camChars.Get(CameraCharacteristics.ScalerStreamConfigurationMap);
-                        videoSize = ChooseVideoSize(map.GetOutputSizes(Class.FromType(typeof(ImageReader))));
+                        var outputSizes = map.GetOutputSizes(Class.FromType(typeof(ImageReader)));
+                        videoSize = ChooseVideoSize(outputSizes);
                         recording = true;
 
                         if (OperatingSystem.IsAndroidVersionAtLeast(31))
@@ -346,8 +347,23 @@ internal class MauiCameraView: GridLayout
                         StreamConfigurationMap map = (StreamConfigurationMap)camChars.Get(CameraCharacteristics.ScalerStreamConfigurationMap);
                         videoSize = ChooseVideoSize(map.GetOutputSizes(Class.FromType(typeof(ImageReader))));
                         var maxVideoSize = ChooseMaxVideoSize(map.GetOutputSizes(Class.FromType(typeof(ImageReader))));
+
+                        Rect sensorRect = (Rect)camChars.Get(CameraCharacteristics.SensorInfoActiveArraySize);
+                        if(_logger.IsEnabled(LogLevel.Trace))
+                        {
+                            _logger.LogTrace($"{nameof(StartCameraAsync)}: {nameof(sensorRect)}: w: {sensorRect.Width()} h: {sensorRect.Height()}");
+                        }
                         if (PhotosResolution.Width != 0 && PhotosResolution.Height != 0)
+                        {
                             maxVideoSize = new((int)PhotosResolution.Width, (int)PhotosResolution.Height);
+                        }
+                        else
+                        {   //HO changed to size of sensor otherwise  Samsung A34 gives images of size maxVideo ( which is less 
+                            maxVideoSize = new Size(sensorRect.Width(), sensorRect.Height());
+
+                        }
+
+
                         imgReader = ImageReader.NewInstance(maxVideoSize.Width, maxVideoSize.Height, ImageFormatType.Jpeg, 1);
                         backgroundThread = new HandlerThread("CameraBackground");
                         backgroundThread.Start();
@@ -855,12 +871,13 @@ internal class MauiCameraView: GridLayout
 
     private Size ChooseVideoSize(Size[] choices)
     {
-        Size result = choices[0];
-        int currentResolution = 0;
         bool swapped = IsDimensionSwapped();
+        Size result = swapped ? new Size(choices[0].Height, choices[0].Width) : choices[0];
+        int currentResolution = 0;
 
         //from smaller to larger
         choices = choices.OrderBy(x => x.Width * x.Height).ToArray();
+        var cameraViewSizeInPixels = GetCameraViewSizeInPixels();
 
         foreach (Size size in choices)
         {
@@ -868,17 +885,14 @@ internal class MauiCameraView: GridLayout
             int h = swapped ? size.Width : size.Height;
             bool isSensorResolution = size.Width == size.Height * 4 / 3;
             bool hasFoundBestSensorResolution = false;
-            if(isSensorResolution)
+            if (isSensorResolution)
             {
                 //HO here we find a resolution that matches Android view size (in pixels)
                 //HO Old code looked at the Width/Heighr of the android view which may be 0 when entering here first time
                 //Android view Width Height is given in pixels so convert (maui) cameraView dimensions to pixels
-                var cameraViewSizeInPixels = GetCameraViewSizeInPixels();
-
-
-                if (!hasFoundBestSensorResolution ||  ((size.Width * size.Height) > currentResolution))
+                if (!hasFoundBestSensorResolution || ((size.Width * size.Height) > currentResolution))
                 {
-                    if((w >= cameraViewSizeInPixels.Width) && (h >= cameraViewSizeInPixels.Height))
+                    if ((w >= cameraViewSizeInPixels.Width) && (h >= cameraViewSizeInPixels.Height))
                     {
                         hasFoundBestSensorResolution = true;
                     }
@@ -886,9 +900,11 @@ internal class MauiCameraView: GridLayout
                     currentResolution = size.Width * size.Height;
                 }
             }
-
         }
 
+        {
+            _logger.LogTrace($"{nameof(ChooseVideoSize)}: selected: w:{result?.Width} h:{result?.Height}");
+        }
         return result;
     }
 
@@ -915,11 +931,15 @@ internal class MauiCameraView: GridLayout
             scaleY = 1;
         }
         */
+        bool isSwapped = IsDimensionSwapped();
+
+
         var cameraViewSizeInPixels = GetCameraViewSizeInPixels();
 
         RectF viewRect = new(0, 0, (float)cameraViewSizeInPixels.Width, (float)cameraViewSizeInPixels.Height);
         float centerX = viewRect.CenterX();
         float centerY = viewRect.CenterY();
+
         RectF bufferRect = new(0, 0, videoHeight, videoWidth);
         bufferRect.Offset(centerX - bufferRect.CenterX(), centerY - bufferRect.CenterY());
         txform.SetRectToRect(viewRect, bufferRect, Matrix.ScaleToFit.Fill);
@@ -928,7 +948,6 @@ internal class MauiCameraView: GridLayout
         /*
         */
         float scale;
-        bool isSwapped = IsDimensionSwapped();
 
         if (cameraView.AspectFitPreview)
         {
