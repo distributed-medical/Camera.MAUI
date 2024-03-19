@@ -542,7 +542,7 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
 
         return result;
     }
-    public bool SaveSnapShot(ImageFormat imageFormat, string SnapFilePath)
+    public bool SaveSnapShot(ImageFormat imageFormat, string SnapFilePath, int? rotation)
     {
         bool result = true;
 

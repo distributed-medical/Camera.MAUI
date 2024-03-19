@@ -132,14 +132,14 @@ internal partial class CameraViewHandler : ViewHandler<CameraView, PlatformView>
         }
         return Task.Run(() => { Stream result = null; return result; });
     }
-    public Task<bool> SaveSnapShot(ImageFormat imageFormat, string SnapFilePath)
+    public Task<bool> SaveSnapShot(ImageFormat imageFormat, string SnapFilePath, int? rotation)
     {
         if (PlatformView != null)
         {
 #if WINDOWS
-            return PlatformView.SaveSnapShot(imageFormat, SnapFilePath);
+            return PlatformView.SaveSnapShot(imageFormat, SnapFilePath, rotation);
 #elif ANDROID || IOS || MACCATALYST
-            var task = new Task<bool>(() => { return PlatformView.SaveSnapShot(imageFormat, SnapFilePath); });
+            var task = new Task<bool>(() => { return PlatformView.SaveSnapShot(imageFormat, SnapFilePath, rotation); });
             task.Start();
             return task;
 #endif

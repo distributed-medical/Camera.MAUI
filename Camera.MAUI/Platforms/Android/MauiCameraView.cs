@@ -147,6 +147,7 @@ internal class MauiCameraView: GridLayout
         }
     }
 
+
     internal async Task<CameraResult> StartRecordingAsync(string file, Microsoft.Maui.Graphics.Size Resolution, int? fps = null, Func<int, int> bitrate = null, bool withAudio = true, int? rotation = null)
     {
         var result = CameraResult.Success;
@@ -468,7 +469,7 @@ internal class MauiCameraView: GridLayout
     {
         Task.Run(() =>
         {
-            Bitmap bitmap = TakeSnap();
+            Bitmap bitmap = TakeSnap(null);
             if (bitmap != null)
             {
                 System.Diagnostics.Debug.WriteLine($"Processing QR ({bitmap.Width}x{bitmap.Height}) " + DateTime.Now.ToString("mm:ss:fff"));
@@ -514,12 +515,15 @@ internal class MauiCameraView: GridLayout
 
     }
 
-    private Bitmap TakeSnap()
+    private Bitmap TakeSnap(int? rotation)
     {
         Bitmap bitmap = null;
         try
         {
-            MainThread.InvokeOnMainThreadAsync(() => { bitmap = textureView.GetBitmap(null); bitmap = textureView.Bitmap; }).Wait();
+            MainThread.InvokeOnMainThreadAsync(() => { 
+                bitmap = textureView.GetBitmap(null); bitmap = textureView.Bitmap; 
+            }).Wait();
+
             if (bitmap != null)
             {
                 int oriWidth = bitmap.Width;
@@ -530,16 +534,37 @@ internal class MauiCameraView: GridLayout
                 float yscale = (float)oriHeight / bitmap.Height;
                 //bitmap = Bitmap.CreateBitmap(bitmap, Math.Abs(bitmap.Width - (int)((float)Width*xscale)) / 2, Math.Abs(bitmap.Height - (int)((float)Height * yscale)) / 2, Width, Height);
                 var cameraViewSizeInPixels = GetCameraViewSizeInPixels();
-                                bitmap = Bitmap.CreateBitmap(bitmap, 0, 0, (int)cameraViewSizeInPixels.Width, (int)cameraViewSizeInPixels.Height);
+
+
+                if (!rotation.HasValue)
+                {
+                    IWindowManager windowManager = context.GetSystemService(Context.WindowService).JavaCast<IWindowManager>();
+                    rotation = (int)windowManager.DefaultDisplay.Rotation;
+                }
+
+
+                bitmap = Bitmap.CreateBitmap(bitmap, 0, 0, (int)cameraViewSizeInPixels.Width, (int)cameraViewSizeInPixels.Height);
+                Matrix matrix = null;
                 if (textureView.ScaleX == -1)
                 {
-                    Matrix matrix = new();
+                    matrix ??= new();
                     matrix.PreScale(-1, 1);
+                }
+                if (rotation.Value != 0)
+                {
+                    matrix ??= new();
+                    //dont now why but using 360 - gives the correct value together with the recording
+                    matrix.PostRotate(360 - rotation.Value, bitmap.Width/2, bitmap.Height/2);
+                }
+                if(matrix != null)
+                {
                     bitmap = Bitmap.CreateBitmap(bitmap, 0, 0, bitmap.Width, bitmap.Height, matrix, false);
                 }
             }
         }
-        catch { }
+        catch (Exception ex) {
+            _logger.LogWarning(ex, nameof(TakeSnap));
+        }
         return bitmap;
     }
 
@@ -694,7 +719,7 @@ internal class MauiCameraView: GridLayout
         if (started && !snapping)
         {
             snapping = true;
-            Bitmap bitmap = TakeSnap();
+            Bitmap bitmap = TakeSnap(null);
 
             if (bitmap != null)
             {
@@ -722,14 +747,14 @@ internal class MauiCameraView: GridLayout
         return result;
     }
 
-    internal bool SaveSnapShot(ImageFormat imageFormat, string SnapFilePath)
+    internal bool SaveSnapShot(ImageFormat imageFormat, string SnapFilePath, int? rotation)
     {
         bool result = true;
 
         if (started && !snapping)
         {
             snapping = true;
-            Bitmap bitmap = TakeSnap();
+            Bitmap bitmap = TakeSnap(rotation);
             if (bitmap != null)
             {
                 if (File.Exists(SnapFilePath)) File.Delete(SnapFilePath);

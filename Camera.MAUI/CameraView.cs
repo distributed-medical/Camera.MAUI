@@ -562,12 +562,12 @@ public class CameraView : View, ICameraView
     /// </summary>
     /// <param name="imageFormat">The capture image format</param>
     /// <param name="SnapFilePath">Full path for the file</param>
-    public async Task<bool> SaveSnapShot(ImageFormat imageFormat, string SnapFilePath)
+    public async Task<bool> SaveSnapShot(ImageFormat imageFormat, string SnapFilePath, int? rotation)
     {
         bool result = false;
         if (Handler != null && Handler is CameraViewHandler handler)
         {
-            result = await handler.SaveSnapShot(imageFormat, SnapFilePath);
+            result = await handler.SaveSnapShot(imageFormat, SnapFilePath, rotation);
         }
         return result;
     }

@@ -572,7 +572,7 @@ public sealed partial class MauiCameraView : UserControl, IDisposable
         return result;
     }
 
-    internal async Task<bool> SaveSnapShot(ImageFormat imageFormat, string SnapFilePath)
+    internal async Task<bool> SaveSnapShot(ImageFormat imageFormat, string SnapFilePath, int? rotation)
     {
         bool result = true;
         if (started && !snapping && frameReader != null)
