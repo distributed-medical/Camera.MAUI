@@ -362,14 +362,36 @@ internal class MauiCameraView: GridLayout
                         {   //HO changed to include non bursting sizes, otherwise  Samsung A34 gives images of size maxVideo ( which is less resolution)
                             var jpegSizes = GetAvailableJpegSizes(map);
                             imgReaderSize = jpegSizes.Last();
-                            if(maxPhotoResolution < int.MaxValue)
+                            if (maxPhotoResolution < int.MaxValue)
                             {
                                 //choose the first resolution that is less than maxResolution and has (about) same aspect as the last
                                 var aspect = ((float)imgReaderSize.Width) / imgReaderSize.Height;
                                 var minAspect = aspect - aspect / 10;
                                 var maxAspect = aspect + aspect / 10;
-                                imgReaderSize =  jpegSizes
-                                    .Last(x => ((float)x.Width) / x.Height >= minAspect && ((float)x.Width) / x.Height <= maxAspect && (x.Width * x.Height) < maxPhotoResolution);
+                                {
+                                    imgReaderSize = jpegSizes
+                                        .LastOrDefault(x => ((float)x.Width) / x.Height >= minAspect && ((float)x.Width) / x.Height <= maxAspect && (x.Width * x.Height) < maxPhotoResolution);
+                                }
+                                /*
+                                if (imgReaderSize == null)
+                                { //none is small enough among jpeg, so lets try imageReader ones
+                                    var imageReaderSizes = map.GetOutputSizes(Class.FromType(typeof(ImageReader))).OrderBy(x => x.Width * x.Height).ToArray();
+
+                                    imgReaderSize = imageReaderSizes
+                                        .LastOrDefault(x => ((float)x.Width) / x.Height >= minAspect && ((float)x.Width) / x.Height <= maxAspect && (x.Width * x.Height) < maxPhotoResolution);
+                                }
+                                */
+                                if (imgReaderSize == null)
+                                { //none is small enough, so lets take the first that matches aspect of camera sensor
+                                    var outputSizes = map.GetOutputSizes(Class.FromType(typeof(ImageReader)));
+                                    imgReaderSize = jpegSizes
+                                    .FirstOrDefault(x => ((float)x.Width) / x.Height >= minAspect && ((float)x.Width) / x.Height <= maxAspect);
+                                }
+                                
+                                if (imgReaderSize == null)
+                                { //none is small enough so take the first
+                                    imgReaderSize = jpegSizes.First();
+                                }
                             }
                         }
 
