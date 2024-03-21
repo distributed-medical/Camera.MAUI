@@ -306,6 +306,7 @@ public class CameraView : View, ICameraView
     private readonly BarcodeReaderGeneric BarcodeReader;
     internal DateTime lastSnapshot = DateTime.Now;
     internal Size PhotosResolution = new(0, 0);
+    internal int MaxPhotoResolution = int.MaxValue;
 
     public static ILogger _logger;
 
@@ -449,12 +450,13 @@ public class CameraView : View, ICameraView
     /// Start playback of the selected camera async. "Camera" property must not be null.
     /// <paramref name="Resolution"/> Indicates the resolution for the preview and photos taken with TakePhotoAsync (must be in Camera.AvailableResolutions). If width or height is 0, max resolution will be taken.
     /// </summary>
-    public async Task<CameraResult> StartCameraAsync(Size Resolution = default)
+    public async Task<CameraResult> StartCameraAsync(Size Resolution = default, int maxPhotoResolution = int.MaxValue)
     {
         CameraResult result = CameraResult.AccessError;
         if (Camera != null)
         {
             PhotosResolution = Resolution;
+            MaxPhotoResolution = maxPhotoResolution;
             if (Resolution.Width != 0 && Resolution.Height != 0)
             {
                 if (!Camera.AvailableResolutions.Any(r => r.Width == Resolution.Width && r.Height == Resolution.Height))
@@ -462,7 +464,7 @@ public class CameraView : View, ICameraView
             }
             if (Handler != null && Handler is CameraViewHandler handler)
             {
-                result = await handler.StartCameraAsync(Resolution);
+                result = await handler.StartCameraAsync(Resolution, maxPhotoResolution);
                 if (result == CameraResult.Success)
                 {
                     BarCodeResults = null;
@@ -537,11 +539,11 @@ public class CameraView : View, ICameraView
     /// </summary>
     /// <param name="imageFormat">The capture image format</param>
     /// <returns>A stream with the photo info</returns>
-    public async Task<Stream> TakePhotoAsync(ImageFormat imageFormat, int? rotation, int maxResolution)
+    public async Task<Stream> TakePhotoAsync(ImageFormat imageFormat, int? rotation)
     {
         if (Handler != null && Handler is CameraViewHandler handler)
         {
-            return await handler.TakePhotoAsync(imageFormat, rotation, maxResolution);
+            return await handler.TakePhotoAsync(imageFormat, rotation);
         }
         return null;
     }

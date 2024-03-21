@@ -331,7 +331,7 @@ internal class MauiCameraView: GridLayout
             }
         }
     }
-    internal async Task<CameraResult> StartCameraAsync(Microsoft.Maui.Graphics.Size PhotosResolution)
+    internal async Task<CameraResult> StartCameraAsync(Microsoft.Maui.Graphics.Size PhotosResolution, int maxPhotoResolution)
     {
         var result = CameraResult.Success;
         if (initiated)
@@ -347,7 +347,7 @@ internal class MauiCameraView: GridLayout
 
                         StreamConfigurationMap map = (StreamConfigurationMap)camChars.Get(CameraCharacteristics.ScalerStreamConfigurationMap);
                         videoSize = ChooseVideoSize(map.GetOutputSizes(Class.FromType(typeof(ImageReader))));
-                        var maxVideoSize = ChooseMaxVideoSize(map.GetOutputSizes(Class.FromType(typeof(ImageReader))));
+                        var imgReaderSize = ChooseMaxVideoSize(map.GetOutputSizes(Class.FromType(typeof(ImageReader))));
 
                         Rect sensorRect = (Rect)camChars.Get(CameraCharacteristics.SensorInfoActiveArraySize);
                         if(_logger.IsEnabled(LogLevel.Trace))
@@ -356,16 +356,25 @@ internal class MauiCameraView: GridLayout
                         }
                         if (PhotosResolution.Width != 0 && PhotosResolution.Height != 0)
                         {
-                            maxVideoSize = new((int)PhotosResolution.Width, (int)PhotosResolution.Height);
+                            imgReaderSize = new((int)PhotosResolution.Width, (int)PhotosResolution.Height);
                         }
                         else
-                        {   //HO changed to size of sensor otherwise  Samsung A34 gives images of size maxVideo ( which is less 
-                            maxVideoSize = new Size(sensorRect.Width(), sensorRect.Height());
-
+                        {   //HO changed to include non bursting sizes, otherwise  Samsung A34 gives images of size maxVideo ( which is less resolution)
+                            var jpegSizes = GetAvailableJpegSizes(map);
+                            imgReaderSize = jpegSizes.Last();
+                            if(maxPhotoResolution < int.MaxValue)
+                            {
+                                //choose the first resolution that is less than maxResolution and has (about) same aspect as the last
+                                var aspect = ((float)imgReaderSize.Width) / imgReaderSize.Height;
+                                var minAspect = aspect - aspect / 10;
+                                var maxAspect = aspect + aspect / 10;
+                                imgReaderSize =  jpegSizes
+                                    .Last(x => ((float)x.Width) / x.Height >= minAspect && ((float)x.Width) / x.Height <= maxAspect && (x.Width * x.Height) < maxPhotoResolution);
+                            }
                         }
 
 
-                        imgReader = ImageReader.NewInstance(maxVideoSize.Width, maxVideoSize.Height, ImageFormatType.Jpeg, 1);
+                        imgReader = ImageReader.NewInstance(imgReaderSize.Width, imgReaderSize.Height, ImageFormatType.Jpeg, 1);
                         backgroundThread = new HandlerThread("CameraBackground");
                         backgroundThread.Start();
                         backgroundHandler = new Handler(backgroundThread.Looper);
@@ -395,10 +404,34 @@ internal class MauiCameraView: GridLayout
 
         return result;
     }
+
+    private Size[] GetAvailableJpegSizes(StreamConfigurationMap map)
+    {
+        var jpegSizes = new List<Size>();
+
+        var sizes = map.GetHighResolutionOutputSizes((int)ImageFormatType.Jpeg);
+
+        if (sizes != null)
+        {
+            jpegSizes.AddRange(sizes);
+        }
+
+        sizes = map.GetOutputSizes((int)ImageFormatType.Jpeg);
+
+        if (sizes != null)
+        {
+            jpegSizes.AddRange(sizes);
+        }
+
+
+        var jpegSizesArray = jpegSizes.OrderBy(x => x.Width * x.Height).ToArray();
+        return jpegSizesArray;
+    }
+
     internal Task<CameraResult> StopRecordingAsync()
     {
         recording = false;
-        return StartCameraAsync(cameraView.PhotosResolution);
+        return StartCameraAsync(cameraView.PhotosResolution, cameraView.MaxPhotoResolution);
     }
 
     internal CameraResult StopCamera()
@@ -556,9 +589,18 @@ internal class MauiCameraView: GridLayout
                     //dont now why but using 360 - gives the correct value together with the recording
                     matrix.PostRotate(360 - rotation.Value, bitmap.Width/2, bitmap.Height/2);
                 }
-                if(matrix != null)
+                var resolution = (float)(bitmap.Width * bitmap.Height);
+                float ratio = 1f;
+                if (resolution > cameraView.MaxPhotoResolution)
+                {   //HO honor maxResolution
+                    matrix ??= new();
+                    ratio = (float)Math.Sqrt((float)cameraView.MaxPhotoResolution / resolution);
+                    matrix.PostScale(ratio, ratio);
+                }
+                if (matrix != null)
                 {
-                    bitmap = Bitmap.CreateBitmap(bitmap, 0, 0, bitmap.Width, bitmap.Height, matrix, false);
+                    //HO Recommended default is to set filter to 'true' as the cost of bilinear filtering is typically minimal and the improved image quality is significant.
+                    bitmap = Bitmap.CreateBitmap(bitmap, 0, 0, bitmap.Width, bitmap.Height, matrix, true);
                 }
             }
         }
@@ -589,7 +631,7 @@ internal class MauiCameraView: GridLayout
     }
 
 
-    internal async Task<System.IO.Stream> TakePhotoAsync(ImageFormat imageFormat, int? rotation, int maxResolution)
+    internal async Task<System.IO.Stream> TakePhotoAsync(ImageFormat imageFormat, int? rotation)
     {
         MemoryStream stream = null;
         if (started && !recording)
@@ -636,14 +678,14 @@ internal class MauiCameraView: GridLayout
             singleRequest.Set(CaptureRequest.JpegOrientation, rotation);
 
             var destZoom = Math.Clamp(cameraView.ZoomFactor, 1, cameraView.Camera.MaxZoomFactor);
-            Rect sensorRect = (Rect)camChars.Get(CameraCharacteristics.SensorInfoActiveArraySize);
-            Rect zoomedSensorArea = CalculateScalerRect(sensorRect, destZoom);
             if (OperatingSystem.IsAndroidVersionAtLeast(_useControlZoomRatio_ApiLevel))
             {
                 singleRequest.Set(CaptureRequest.ControlZoomRatio, destZoom);
             }
             else
             {
+                Rect sensorRect = (Rect)camChars.Get(CameraCharacteristics.SensorInfoActiveArraySize);
+                Rect zoomedSensorArea = CalculateScalerRect(sensorRect, destZoom);
                 singleRequest.Set(CaptureRequest.ScalerCropRegion, zoomedSensorArea);
             }
 
@@ -656,21 +698,7 @@ internal class MauiCameraView: GridLayout
                 if (capturePhoto != null)
                 {
                     Bitmap bitmap = null;
-                    var resolution = zoomedSensorArea.Width() * zoomedSensorArea.Height();
 
-                    if (_logger.IsEnabled(LogLevel.Trace))
-                    {
-                        _logger.LogTrace($"{nameof(TakePhotoAsync)}: 10: SensorRect: {CreateLogStringForRect(sensorRect)} zoomedSensorArea: {CreateLogStringForRect(zoomedSensorArea)}");
-                    }
-                    if (resolution > maxResolution)
-                    {   //HO honor maxResolution
-                        Matrix matrix = new();
-                        float ratio = (float)Math.Sqrt((float)maxResolution / resolution);
-                        matrix.SetScale(ratio, ratio);
-                        //HO Recommended default is to set filter to 'true' as the cost of bilinear filtering is typically minimal and the improved image quality is significant.
-                        bitmap = bitmap ?? BitmapFactory.DecodeByteArray(capturePhoto, 0, capturePhoto.Length);
-                        bitmap = Bitmap.CreateBitmap(bitmap, 0, 0, bitmap.Width, bitmap.Height, matrix, true);
-                    }
                     if (_logger.IsEnabled(LogLevel.Trace))
                     {
                         _logger.LogTrace($"{nameof(TakePhotoAsync)}: 20: TextureView: {textureView.ToString()} ScaleX:{textureView.ScaleX} ScaleY: {textureView.ScaleY}");
@@ -1006,7 +1034,7 @@ internal class MauiCameraView: GridLayout
     {
         base.OnConfigurationChanged(newConfig);
         if (started && !recording)
-            await StartCameraAsync(cameraView.PhotosResolution);
+            await StartCameraAsync(cameraView.PhotosResolution, cameraView.MaxPhotoResolution);
     }
 
     private bool IsDimensionSwapped()

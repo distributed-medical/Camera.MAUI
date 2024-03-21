@@ -245,10 +245,11 @@ public sealed partial class MauiCameraView : UserControl, IDisposable
     }
     internal async Task<CameraResult> StopRecordingAsync()
     {
-        return await StartCameraAsync(cameraView.PhotosResolution);
+        return await StartCameraAsync(cameraView.PhotosResolution, cameraView.MaxPhotoResolution);
     }
-    internal async Task<CameraResult> StartCameraAsync(Size PhotosResolution)
+    internal async Task<CameraResult> StartCameraAsync(Size PhotosResolution, int maxPhotoResolution)
     {
+        _ = maxPhotoResolution;
         CameraResult result = CameraResult.Success;
 
         if (initiated)
@@ -438,7 +439,7 @@ public sealed partial class MauiCameraView : UserControl, IDisposable
         if (started) StopCameraAsync().Wait();
         Dispose();
     }
-    internal async Task<Stream> TakePhotoAsync(ImageFormat imageFormat, int? rotation, int maxResolution)
+    internal async Task<Stream> TakePhotoAsync(ImageFormat imageFormat, int? rotation)
     {
         /*
         CameraCaptureUI cameraCaptureUI = new CameraCaptureUI();
@@ -485,13 +486,6 @@ public sealed partial class MauiCameraView : UserControl, IDisposable
                 encoder.SetSoftwareBitmap(img);
                 try
                 {
-                    var resolution = img.PixelWidth * img.PixelHeight;
-                    if (resolution > maxResolution)
-                    {
-                        float scale = (float)Math.Sqrt((float)maxResolution / resolution);
-                        encoder.BitmapTransform.ScaledWidth = (uint)Math.Round(img.PixelWidth * scale);
-                        encoder.BitmapTransform.ScaledHeight = (uint)Math.Round(img.PixelHeight * scale);
-                    }
                     if (flowDirection == Microsoft.UI.Xaml.FlowDirection.RightToLeft)
                     {
                         encoder.BitmapTransform.Flip = BitmapFlip.Horizontal;

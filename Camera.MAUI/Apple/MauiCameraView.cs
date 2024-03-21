@@ -274,11 +274,12 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
     }
     public Task<CameraResult> StopRecordingAsync()
     {
-        return StartCameraAsync(cameraView.PhotosResolution);
+        return StartCameraAsync(cameraView.PhotosResolution, cameraView.MaxPhotoResolution);
     }
 
-    public async Task<CameraResult> StartCameraAsync(Size PhotosResolution)
+    public async Task<CameraResult> StartCameraAsync(Size PhotosResolution, int maxPhotoResolution)
     {
+        _ = maxPhotoResolution;
         CameraResult result = CameraResult.Success;
         if (initiated)
         {
@@ -424,7 +425,7 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
         }
     }
 
-    internal async Task<Stream> TakePhotoAsync(ImageFormat imageFormat, int? rotation, int maxResolution)
+    internal async Task<Stream> TakePhotoAsync(ImageFormat imageFormat, int? rotation)
     {
         photoError = photoTaken = false;
         var photoSettings = AVCapturePhotoSettings.Create();
@@ -459,14 +460,6 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
                 UIDeviceOrientation.PortraitUpsideDown => UIImageOrientation.Left,
                 _ => UIImageOrientation.Right
             };
-            var resolution = photo.Size.Width * photo.Size.Height * photo.CurrentScale;
-            if(resolution > maxResolution)
-            {
-                //float ratio = (float)maxResolution / resolution;
-                //var newSize = photo.Size.; 
-                //fdfdf newSize.Width = ratio.;
-                //photo.Scale() .CurrentScale = resolution;
-            }
 
             if (photo.Orientation != orientation)
             {
