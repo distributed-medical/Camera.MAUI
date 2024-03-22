@@ -932,12 +932,6 @@ internal class MauiCameraView: GridLayout
 
     Size GetCameraViewSizeInPixels()
     {
-
-        var displayHeight =DeviceDisplay.Current.MainDisplayInfo.Height;
-
-
-        //var cameraViewWidthInPixels = (int)Math.Round(cameraView.Width);
-        //var cameraViewHeightInPixels = (int)Math.Round(cameraView.Height);
         var cameraViewWidthInPixels = (int)Math.Round(cameraView.Width * DeviceDisplay.Current.MainDisplayInfo.Density);
         var cameraViewHeightInPixels = (int)Math.Round(cameraView.Height * DeviceDisplay.Current.MainDisplayInfo.Density);
         return new Size(cameraViewWidthInPixels, cameraViewHeightInPixels);
