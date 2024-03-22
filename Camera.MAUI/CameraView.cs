@@ -313,6 +313,10 @@ public class CameraView : View, ICameraView
 
     public CameraView()
     {
+#if ANDROID
+        _logger = MauiApplication.Current.Services.GetService<ILogger<CameraView>>();
+#endif
+
         BarcodeReader = new BarcodeReaderGeneric();
         HandlerChanged += CameraView_HandlerChanged;
         Current = this;
@@ -517,7 +521,7 @@ public class CameraView : View, ICameraView
         CameraResult result = CameraResult.AccessError;
         if (Handler != null && Handler is CameraViewHandler handler)
         {
-            _logger.LogTrace($"{nameof(StopCameraAsync)}: pre");
+            _logger?.LogTrace($"{nameof(StopCameraAsync)}: pre");
             result = await handler.StopCameraAsync();
         }
         return result;

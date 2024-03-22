@@ -597,8 +597,8 @@ internal class MauiCameraView: GridLayout
                     rotation = (int)windowManager.DefaultDisplay.Rotation;
                 }
 
-
-                bitmap = Bitmap.CreateBitmap(bitmap, 0, 0, (int)cameraViewSizeInPixels.Width, (int)cameraViewSizeInPixels.Height);
+                //HO check why these differs when starting scanbarcode page and if cameraViewSizeInPixels is really needed or we can go with textureView width Height
+                bitmap = Bitmap.CreateBitmap(bitmap, 0, 0, (int)Math.Min(bitmap.Width, cameraViewSizeInPixels.Width), (int)Math.Min(bitmap.Height,cameraViewSizeInPixels.Height));
                 Matrix matrix = null;
                 if (textureView.ScaleX == -1)
                 {
