@@ -153,7 +153,7 @@ internal class MauiCameraView: GridLayout
         var result = CameraResult.Success;
         if (initiated && !recording)
         {
-            if (await CameraView.RequestPermissions(true, true))
+            if (await CameraView.RequestPermissions(withAudio, true))
             {
                 if (started) StopCamera();
                 if (cameraView.Camera != null)

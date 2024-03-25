@@ -118,7 +118,7 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
         if (initiated)
         {
             if (started) StopCamera();
-            if (await CameraView.RequestPermissions(true))
+            if (await CameraView.RequestPermissions(withAudio))
             {
                 if (cameraView.Camera != null && cameraView.Microphone != null && captureSession != null)
                 {
