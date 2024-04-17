@@ -524,7 +524,7 @@ internal class MauiCameraView: GridLayout
     {
         Task.Run(() =>
         {
-            Bitmap bitmap = TakeSnap(null);
+            Bitmap bitmap = TakeSnap();
             if (bitmap != null)
             {
                 System.Diagnostics.Debug.WriteLine($"Processing QR ({bitmap.Width}x{bitmap.Height}) " + DateTime.Now.ToString("mm:ss:fff"));
@@ -570,9 +570,54 @@ internal class MauiCameraView: GridLayout
 
     }
 
-    private Bitmap TakeSnap(int? rotation)
+
+    private Bitmap TakeSnap(bool fromRecording = false)
+    //private Bitmap TakeSnap_org()
     {
         Bitmap bitmap = null;
+        try
+        {
+            MainThread.InvokeOnMainThreadAsync(() => {
+                bitmap = textureView.GetBitmap(null);
+                //_logger.LogInformation($"0. bitmap.Width:{bitmap?.Width} bitmap.Height: {bitmap?.Height}");
+
+                bitmap = textureView.Bitmap;
+                //_logger.LogInformation($"1. bitmap.Width:{bitmap?.Width} bitmap.Height: {bitmap?.Height}");
+            }).Wait();
+            _logger.LogInformation($"2. bitmap.Width:{bitmap.Width} bitmap.Height: {bitmap.Height}");
+            if (bitmap != null)
+            {
+                //_logger.LogInformation($"3. bitmap.Width:{bitmap.Width} bitmap.Height: {bitmap.Height}");
+                int oriWidth = bitmap.Width;
+                int oriHeight = bitmap.Height;
+
+                //HO this call crops the bitmap according to what is visible in textureView 
+                //if AspectFitPreview this is smaller than android view
+                //if not AspectFitPreview this is bigger than android view
+                bitmap = Bitmap.CreateBitmap(bitmap, 0, 0, bitmap.Width, bitmap.Height, textureView.GetTransform(null), false);
+                //_logger.LogInformation($"4. bitmap.Width:{bitmap.Width} bitmap.Height: {bitmap.Height}");
+
+                //HO this orig code is wrong cause doesnt adjust the offset!
+                //bitmap = Bitmap.CreateBitmap(bitmap, 0, 0, Width, Height);
+                //_logger.LogInformation($"5. bitmap.Width:{bitmap.Width} bitmap.Height: {bitmap.Height}");
+
+                if (textureView.ScaleX == -1)
+                {
+                    Matrix matrix = new();
+                    matrix.PreScale(-1, 1);
+                    bitmap = Bitmap.CreateBitmap(bitmap, 0, 0, bitmap.Width, bitmap.Height, matrix, false);
+                }
+            }
+        }
+        catch { }
+        return bitmap;
+    }
+
+    /*
+    private Bitmap TakeSnap()
+    //private Bitmap TakeSnap_new()
+    {
+    Bitmap bitmap = null;
         try
         {
             MainThread.InvokeOnMainThreadAsync(() => { 
@@ -591,11 +636,6 @@ internal class MauiCameraView: GridLayout
                 var cameraViewSizeInPixels = GetCameraViewSizeInPixels();
 
 
-                if (!rotation.HasValue)
-                {
-                    IWindowManager windowManager = context.GetSystemService(Context.WindowService).JavaCast<IWindowManager>();
-                    rotation = (int)windowManager.DefaultDisplay.Rotation;
-                }
 
                 //HO check why these differs when starting scanbarcode page and if cameraViewSizeInPixels is really needed or we can go with textureView width Height
                 bitmap = Bitmap.CreateBitmap(bitmap, 0, 0, (int)Math.Min(bitmap.Width, cameraViewSizeInPixels.Width), (int)Math.Min(bitmap.Height,cameraViewSizeInPixels.Height));
@@ -604,20 +644,6 @@ internal class MauiCameraView: GridLayout
                 {
                     matrix ??= new();
                     matrix.PreScale(-1, 1);
-                }
-                if (rotation.Value != 0)
-                {
-                    matrix ??= new();
-                    //dont now why but using 360 - gives the correct value together with the recording
-                    matrix.PostRotate(360 - rotation.Value, bitmap.Width/2, bitmap.Height/2);
-                }
-                var resolution = (float)(bitmap.Width * bitmap.Height);
-                float ratio = 1f;
-                if (resolution > cameraView.MaxPhotoResolution)
-                {   //HO honor maxResolution
-                    matrix ??= new();
-                    ratio = (float)Math.Sqrt((float)cameraView.MaxPhotoResolution / resolution);
-                    matrix.PostScale(ratio, ratio);
                 }
                 if (matrix != null)
                 {
@@ -631,6 +657,7 @@ internal class MauiCameraView: GridLayout
         }
         return bitmap;
     }
+    */
 
     private static Rect CalculateScalerRect(Rect sensorRect, Single zoomFactor)
     {
@@ -769,7 +796,7 @@ internal class MauiCameraView: GridLayout
         if (started && !snapping)
         {
             snapping = true;
-            Bitmap bitmap = TakeSnap(null);
+            Bitmap bitmap = TakeSnap();
 
             if (bitmap != null)
             {
@@ -804,9 +831,37 @@ internal class MauiCameraView: GridLayout
         if (started && !snapping)
         {
             snapping = true;
-            Bitmap bitmap = TakeSnap(rotation);
+            Bitmap bitmap = TakeSnap(true);
             if (bitmap != null)
             {
+                if (!rotation.HasValue)
+                {
+                    IWindowManager windowManager = context.GetSystemService(Context.WindowService).JavaCast<IWindowManager>();
+                    rotation = (int)windowManager.DefaultDisplay.Rotation;
+                }
+
+                Matrix matrix = null;
+                if (rotation.Value != 0)
+                {
+                    matrix ??= new();
+                    //dont now why but using 360 - gives the correct value together with the recording
+                    matrix.PostRotate(360 - rotation.Value, bitmap.Width / 2, bitmap.Height / 2);
+                }
+
+                var resolution = (float)(bitmap.Width * bitmap.Height);
+                if (resolution > cameraView.MaxPhotoResolution)
+                {   //HO honor maxResolution
+                    matrix ??= new();
+                    float ratio = (float)Math.Sqrt((float)cameraView.MaxPhotoResolution / resolution);
+                    matrix.PostScale(ratio, ratio);
+                }
+
+                if(matrix != null)
+                {
+                    //HO Recommended default is to set filter to 'true' as the cost of bilinear filtering is typically minimal and the improved image quality is significant.
+                    bitmap = Bitmap.CreateBitmap(bitmap, 0, 0, bitmap.Width, bitmap.Height, matrix, true);
+                }
+
                 if (File.Exists(SnapFilePath)) File.Delete(SnapFilePath);
                 var iformat = imageFormat switch
                 {
