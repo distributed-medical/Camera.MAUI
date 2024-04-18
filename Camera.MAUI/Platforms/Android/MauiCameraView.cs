@@ -996,33 +996,38 @@ internal class MauiCameraView: GridLayout
     private Size ChooseVideoSize(Size[] choices)
     {
         bool swapped = IsDimensionSwapped();
-        Size result = swapped ? new Size(choices[0].Height, choices[0].Width) : choices[0];
-        int currentResolution = 0;
 
         //from smaller to larger
         choices = choices.OrderBy(x => x.Width * x.Height).ToArray();
+
+        Size result = choices[0];
+
+
         var cameraViewSizeInPixels = GetCameraViewSizeInPixels();
 
+        var cameraViewSizeInPixels_Width = cameraViewSizeInPixels.Width;
+        var cameraViewSizeInPixels_Height = cameraViewSizeInPixels.Height;
+
+        if (swapped)
+        {
+            cameraViewSizeInPixels_Width = cameraViewSizeInPixels.Height;
+            cameraViewSizeInPixels_Height = cameraViewSizeInPixels.Width;
+        }
+
+        bool hasFoundBestSensorResolution = false;
         foreach (Size size in choices)
         {
-            int w = swapped ? size.Height : size.Width;
-            int h = swapped ? size.Width : size.Height;
-            bool isSensorResolution = size.Width == size.Height * 4 / 3;
-            bool hasFoundBestSensorResolution = false;
-            if (isSensorResolution)
+            bool isSensorResolution = size.Width == Math.Round((float)size.Height * 4 / 3);
+            if (isSensorResolution && !hasFoundBestSensorResolution)
             {
                 //HO here we find a resolution that matches Android view size (in pixels)
                 //HO Old code looked at the Width/Heighr of the android view which may be 0 when entering here first time
                 //Android view Width Height is given in pixels so convert (maui) cameraView dimensions to pixels
-                if (!hasFoundBestSensorResolution || ((size.Width * size.Height) > currentResolution))
+                if ((size.Width >= cameraViewSizeInPixels_Width) && (size.Height >= cameraViewSizeInPixels_Height))
                 {
-                    if ((w >= cameraViewSizeInPixels.Width) && (h >= cameraViewSizeInPixels.Height))
-                    {
-                        hasFoundBestSensorResolution = true;
-                    }
-                    result = size;
-                    currentResolution = size.Width * size.Height;
+                    hasFoundBestSensorResolution = true;
                 }
+                result = size;
             }
         }
 
