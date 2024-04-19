@@ -48,7 +48,6 @@ public sealed partial class MauiCameraView : UserControl, IDisposable
 
     internal void UpdateMirroredImage()
     {
-
         if (cameraView != null)
         {
             if(cameraView.MirroredImage)
@@ -183,8 +182,6 @@ public sealed partial class MauiCameraView : UserControl, IDisposable
             if (started) await StopCameraAsync();
             if (cameraView.Camera != null && cameraView.Microphone != null)
             {
-                
-
                 while (!mediaLoaded) await Task.Delay(50);
                 started = true;
 

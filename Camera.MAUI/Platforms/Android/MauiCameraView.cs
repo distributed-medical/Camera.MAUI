@@ -45,6 +45,7 @@ internal class MauiCameraView: GridLayout
     private AudioManager audioManager;
     private readonly System.Timers.Timer timer;
     private readonly SparseIntArray ORIENTATIONS = new();
+    private readonly SparseIntArray ORIENTATIONSFRONT = new();
     private CameraCharacteristics camChars;
     private PreviewCaptureStateCallback sessionCallback;
     private byte[] capturePhoto = null;
@@ -75,6 +76,10 @@ internal class MauiCameraView: GridLayout
         ORIENTATIONS.Append((int)SurfaceOrientation.Rotation90, 0);
         ORIENTATIONS.Append((int)SurfaceOrientation.Rotation180, 270);
         ORIENTATIONS.Append((int)SurfaceOrientation.Rotation270, 180);
+        ORIENTATIONSFRONT.Append((int)SurfaceOrientation.Rotation0, 270);
+        ORIENTATIONSFRONT.Append((int)SurfaceOrientation.Rotation90, 0);
+        ORIENTATIONSFRONT.Append((int)SurfaceOrientation.Rotation180, 90);
+        ORIENTATIONSFRONT.Append((int)SurfaceOrientation.Rotation270, 180);
         InitDevices();
     }
 
@@ -167,6 +172,8 @@ internal class MauiCameraView: GridLayout
                         videoSize = ChooseVideoSize(outputSizes);
                         recording = true;
 
+                        if (File.Exists(file)) File.Delete(file);
+
                         if (OperatingSystem.IsAndroidVersionAtLeast(31))
                             mediaRecorder = new MediaRecorder(context);
                         else
@@ -219,7 +226,7 @@ internal class MauiCameraView: GridLayout
                             rotation = (int)windowManager.DefaultDisplay.Rotation;
                         }
 
-                        int orientation = ORIENTATIONS.Get(rotation.Value);
+                        int orientation = cameraView.Camera.Position == CameraPosition.Back ? orientation = ORIENTATIONS.Get(rotation.Value) : orientation = ORIENTATIONSFRONT.Get(rotation.Value);
                         mediaRecorder.SetOrientationHint(orientation);
                         mediaRecorder.Prepare();
 
@@ -254,7 +261,7 @@ internal class MauiCameraView: GridLayout
             _logger.LogTrace($"{nameof(StartPreview)}: entered");
         }
 
-        while (textureView.SurfaceTexture == null) Thread.Sleep(100);
+        while (textureView.SurfaceTexture == null || !textureView.IsAvailable) Thread.Sleep(100);
         SurfaceTexture texture = textureView.SurfaceTexture;
         texture.SetDefaultBufferSize(videoSize.Width, videoSize.Height);
 
@@ -477,8 +484,7 @@ internal class MauiCameraView: GridLayout
                 {
                     mediaRecorder?.Stop();
                     mediaRecorder?.Dispose();
-                }
-                catch { }
+                } catch { }
                 try
                 {
                     backgroundThread?.QuitSafely();
@@ -492,15 +498,14 @@ internal class MauiCameraView: GridLayout
                 try
                 {
                     previewSession?.StopRepeating();
+                    previewSession?.AbortCaptures();
                     previewSession?.Dispose();
-                }
-                catch { }
+                } catch { }
                 try
                 {
                     cameraDevice?.Close();
                     cameraDevice?.Dispose();
-                }
-                catch { }
+            } catch { }
                 previewSession = null;
                 cameraDevice = null;
                 previewBuilder = null;
@@ -509,9 +514,7 @@ internal class MauiCameraView: GridLayout
                 recording = false;
             }
             else
-            {
                 result = CameraResult.NotInitiated;
-            }
             return result;
         }
     }

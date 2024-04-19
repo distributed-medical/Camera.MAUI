@@ -38,6 +38,7 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
     private bool photoTaken = false;
     private bool photoError = false;
     private UIImage photo;
+    private readonly NSObject orientationObserver;
 
     public MauiCameraView(CameraView cameraView)
     {
@@ -62,7 +63,7 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
         cameraDispacher = new DispatchQueue("CameraDispacher");
 
         videoDataOutput.SetSampleBufferDelegate(this, cameraDispacher);
-        NSNotificationCenter.DefaultCenter.AddObserver(UIDevice.OrientationDidChangeNotification, OrientationChanged);
+        orientationObserver = NSNotificationCenter.DefaultCenter.AddObserver(UIDevice.OrientationDidChangeNotification, OrientationChanged);
         InitDevices();
     }
     private void OrientationChanged(NSNotification notification)
@@ -94,6 +95,7 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
                         HasFlashUnit = device.FlashAvailable,
                         MinZoomFactor = (float)device.MinAvailableVideoZoomFactor,
                         MaxZoomFactor = (float)device.MaxAvailableVideoZoomFactor,
+                        HorizontalViewAngle = device.ActiveFormat.VideoFieldOfView * MathF.PI / 180f,
                         AvailableResolutions = new() { new(3840, 2160), new(1920, 1080), new(1280, 720), new(640, 480), new(352, 288) }
                     });
                 }
@@ -249,16 +251,15 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
 
 
                         captureSession.StartRunning();
-                        if (!File.Exists(file)) File.Create(file).Close();
+                        if (File.Exists(file)) File.Delete(file);
                         
                         recordOutput.StartRecordingToOutputFile(NSUrl.FromFilename(file), this);
                         UpdateMirroredImage();
                         SetZoomFactor(cameraView.ZoomFactor);
                         started = true;
                     }
-                    catch(Exception ex)
+                    catch
                     {
-                        _ = ex;
                         result = CameraResult.AccessError;
                     }
                 }
@@ -365,7 +366,7 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
     public void DisposeControl()
     {
         if (started) StopCamera();
-        NSNotificationCenter.DefaultCenter.RemoveObserver(UIDevice.OrientationDidChangeNotification);
+        NSNotificationCenter.DefaultCenter.RemoveObserver(orientationObserver);
         PreviewLayer?.Dispose();
         captureSession?.Dispose();
         Dispose();
@@ -453,19 +454,15 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
                     _ => UIDeviceOrientation.Portrait
                 };
             }
-            UIImageOrientation orientation = currentDeviceOrientation switch
+            UIImageOrientation orientation = UIDevice.CurrentDevice.Orientation switch
             {
-                UIDeviceOrientation.LandscapeRight => UIImageOrientation.Down,
-                UIDeviceOrientation.LandscapeLeft => UIImageOrientation.Up,
+                UIDeviceOrientation.LandscapeRight => cameraView.Camera?.Position == CameraPosition.Back ? UIImageOrientation.Down : UIImageOrientation.Up,
+                UIDeviceOrientation.LandscapeLeft => cameraView.Camera?.Position == CameraPosition.Back ? UIImageOrientation.Up : UIImageOrientation.Down,
                 UIDeviceOrientation.PortraitUpsideDown => UIImageOrientation.Left,
                 _ => UIImageOrientation.Right
             };
-
             if (photo.Orientation != orientation)
-            {
                 photo = UIImage.FromImage(photo.CGImage, photo.CurrentScale, orientation);
-            }
-
             MemoryStream stream = new();
             switch (imageFormat)
             {
@@ -550,8 +547,7 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
                     {
                         var ciContext = new CIContext();
                         CGImage cgImage = ciContext.CreateCGImage(lastCapture, lastCapture.Extent);
-                        var deviceOrientation = UIDevice.CurrentDevice.Orientation;
-                        UIImageOrientation orientation = deviceOrientation switch
+                        UIImageOrientation orientation = UIDevice.CurrentDevice.Orientation switch
                         {
                             UIDeviceOrientation.LandscapeRight => UIImageOrientation.Down,
                             UIDeviceOrientation.LandscapeLeft => UIImageOrientation.Up,
@@ -714,10 +710,12 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
                 transform = CATransform3D.MakeRotation((nfloat)Math.PI, 0, 0, 1.0f);
                 break;
             case UIDeviceOrientation.LandscapeLeft:
-                transform = CATransform3D.MakeRotation((nfloat)(-Math.PI / 2), 0, 0, 1.0f);
+                var rotation = cameraView.Camera?.Position == CameraPosition.Back ? -Math.PI / 2 : Math.PI / 2;
+                transform = CATransform3D.MakeRotation((nfloat)rotation, 0, 0, 1.0f);
                 break;
             case UIDeviceOrientation.LandscapeRight:
-                transform = CATransform3D.MakeRotation((nfloat)Math.PI / 2, 0, 0, 1.0f);
+                var rotation2 = cameraView.Camera?.Position == CameraPosition.Back ? Math.PI / 2 : -Math.PI /2;
+                transform = CATransform3D.MakeRotation((nfloat)rotation2, 0, 0, 1.0f);
                 break;
         }
         */
