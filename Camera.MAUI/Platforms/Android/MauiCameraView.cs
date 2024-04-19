@@ -346,7 +346,16 @@ internal class MauiCameraView: GridLayout
                         camChars = cameraManager.GetCameraCharacteristics(cameraView.Camera.DeviceId);
 
                         StreamConfigurationMap map = (StreamConfigurationMap)camChars.Get(CameraCharacteristics.ScalerStreamConfigurationMap);
-                        videoSize = ChooseVideoSize(map.GetOutputSizes(Class.FromType(typeof(ImageReader))));
+
+                        if (cameraView.BarCodeDetectionEnabled)
+                        { //HO otherwise the quality is to low for barcodescanner sw
+                            videoSize = ChooseMaxVideoSize(map.GetOutputSizes(Class.FromType(typeof(ImageReader))));
+                        }
+                        else
+                        {
+                            videoSize = ChooseVideoSize(map.GetOutputSizes(Class.FromType(typeof(ImageReader))));
+                        }
+
                         var imgReaderSize = ChooseMaxVideoSize(map.GetOutputSizes(Class.FromType(typeof(ImageReader))));
 
                         Rect sensorRect = (Rect)camChars.Get(CameraCharacteristics.SensorInfoActiveArraySize);
