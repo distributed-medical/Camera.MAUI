@@ -571,17 +571,20 @@ internal class MauiCameraView: GridLayout
     }
 
 
-    private Bitmap TakeSnap(bool fromRecording = false)
+    private Bitmap TakeSnap()
     //private Bitmap TakeSnap_org()
     {
         Bitmap bitmap = null;
         try
         {
             MainThread.InvokeOnMainThreadAsync(() => {
-                bitmap = textureView.GetBitmap(null);
+                //HO??? why did hjam40 make this first call next call replaces the bitmap anyway 
+                //bitmap = textureView.GetBitmap(null);
+                //bitmap?.Dispose();
                 //_logger.LogInformation($"0. bitmap.Width:{bitmap?.Width} bitmap.Height: {bitmap?.Height}");
 
                 bitmap = textureView.Bitmap;
+
                 //_logger.LogInformation($"1. bitmap.Width:{bitmap?.Width} bitmap.Height: {bitmap?.Height}");
             }).Wait();
             _logger.LogInformation($"2. bitmap.Width:{bitmap.Width} bitmap.Height: {bitmap.Height}");
@@ -594,7 +597,11 @@ internal class MauiCameraView: GridLayout
                 //HO this call crops the bitmap according to what is visible in textureView 
                 //if AspectFitPreview this is smaller than android view
                 //if not AspectFitPreview this is bigger than android view
-                bitmap = Bitmap.CreateBitmap(bitmap, 0, 0, bitmap.Width, bitmap.Height, textureView.GetTransform(null), false);
+                {
+                    var prevBitmap = bitmap;
+                    bitmap = Bitmap.CreateBitmap(bitmap, 0, 0, bitmap.Width, bitmap.Height, textureView.GetTransform(null), false);
+                    prevBitmap.Dispose();
+                }
                 //_logger.LogInformation($"4. bitmap.Width:{bitmap.Width} bitmap.Height: {bitmap.Height}");
 
                 //HO this orig code is wrong cause doesnt adjust the offset!
@@ -605,7 +612,9 @@ internal class MauiCameraView: GridLayout
                 {
                     Matrix matrix = new();
                     matrix.PreScale(-1, 1);
+                    var prevBitmap = bitmap;
                     bitmap = Bitmap.CreateBitmap(bitmap, 0, 0, bitmap.Width, bitmap.Height, matrix, false);
+                    prevBitmap.Dispose();
                 }
             }
         }
@@ -746,33 +755,29 @@ internal class MauiCameraView: GridLayout
                 while (!captureDone) await Task.Delay(50);
                 if (capturePhoto != null)
                 {
-                    Bitmap bitmap = null;
 
                     if (_logger.IsEnabled(LogLevel.Trace))
                     {
                         _logger.LogTrace($"{nameof(TakePhotoAsync)}: 20: TextureView: {textureView.ToString()} ScaleX:{textureView.ScaleX} ScaleY: {textureView.ScaleY}");
                     }
-                    if (bitmap != null || textureView.ScaleX == -1 || imageFormat != ImageFormat.JPEG)
+                    if (textureView.ScaleX == -1 || imageFormat != ImageFormat.JPEG)
                     {
-                        bitmap = bitmap ?? BitmapFactory.DecodeByteArray(capturePhoto, 0, capturePhoto.Length);
-                        if (bitmap != null)
+                        Bitmap bitmap = BitmapFactory.DecodeByteArray(capturePhoto, 0, capturePhoto.Length);
+                        if (textureView.ScaleX == -1)
                         {
-                            if (textureView.ScaleX == -1)
-                            {
-                                Matrix matrix = new();
-                                matrix.PreRotate(rotation.Value);
-                                matrix.PostScale(-1, 1);
-                                bitmap = Bitmap.CreateBitmap(bitmap, 0, 0, bitmap.Width, bitmap.Height, matrix, false);
-                            }
-                            var iformat = imageFormat switch
-                            {
-                                ImageFormat.JPEG => Bitmap.CompressFormat.Jpeg,
-                                _ => Bitmap.CompressFormat.Png
-                            };
-                            stream = new();
-                            bitmap.Compress(iformat, 100, stream);
-                            stream.Position = 0;
+                            Matrix matrix = new();
+                            matrix.PreRotate(rotation.Value);
+                            matrix.PostScale(-1, 1);
+                            bitmap = Bitmap.CreateBitmap(bitmap, 0, 0, bitmap.Width, bitmap.Height, matrix, false);
                         }
+                        var iformat = imageFormat switch
+                        {
+                            ImageFormat.JPEG => Bitmap.CompressFormat.Jpeg,
+                            _ => Bitmap.CompressFormat.Png
+                        };
+                        stream = new();
+                        bitmap.Compress(iformat, 100, stream);
+                        stream.Position = 0;
                     }
                     else
                     {
@@ -831,7 +836,7 @@ internal class MauiCameraView: GridLayout
         if (started && !snapping)
         {
             snapping = true;
-            Bitmap bitmap = TakeSnap(true);
+            Bitmap bitmap = TakeSnap();
             if (bitmap != null)
             {
                 if (!rotation.HasValue)
@@ -859,7 +864,9 @@ internal class MauiCameraView: GridLayout
                 if(matrix != null)
                 {
                     //HO Recommended default is to set filter to 'true' as the cost of bilinear filtering is typically minimal and the improved image quality is significant.
+                    var prevBimap = bitmap;
                     bitmap = Bitmap.CreateBitmap(bitmap, 0, 0, bitmap.Width, bitmap.Height, matrix, true);
+                    prevBimap.Dispose();
                 }
 
                 if (File.Exists(SnapFilePath)) File.Delete(SnapFilePath);
