@@ -310,6 +310,11 @@ internal class MauiCameraView: GridLayout
             cameraDevice.CreateCaptureSession(surfaces26, sessionCallback, null);
 #pragma warning restore CS0618 // El tipo o el miembro están obsoletos
         }
+        _logger.LogTrace("_previewStartedTcs?.TrySetResult()");
+        lock(_previewStartedTcsLock)
+        {
+            _previewStartedTcs?.TrySetResult();
+        }
     }
     private void UpdatePreview()
     {
@@ -338,6 +343,10 @@ internal class MauiCameraView: GridLayout
             }
         }
     }
+
+    object _previewStartedTcsLock = new object();
+    TaskCompletionSource? _previewStartedTcs = null;
+
     internal async Task<CameraResult> StartCameraAsync(Microsoft.Maui.Graphics.Size PhotosResolution, int maxPhotoResolution)
     {
         var result = CameraResult.Success;
@@ -418,10 +427,25 @@ internal class MauiCameraView: GridLayout
                         backgroundHandler = new Handler(backgroundThread.Looper);
                         imgReader.SetOnImageAvailableListener(photoListener, backgroundHandler);
 
+                        //HO _previewStartedTcs: needed or we sometimes get exception cause StartCameraAsync is called when StopRecording is called 
+                        //HO and after StopRecording app directly changes page to PhotoPreviewPage
+                        //HO OpenCamera causes an async call to StartPreview via callback which can then not be performed as we have left the CameraPage 
+                        //HO This causes exception  
+                        //HO Solution we wait for the preview to start before returning from this function
+                        lock (_previewStartedTcsLock)
+                        {
+                            _previewStartedTcs = new();
+                        }
+
                         if (OperatingSystem.IsAndroidVersionAtLeast(28))
                             cameraManager.OpenCamera(cameraView.Camera.DeviceId, executorService, stateListener);
                         else
                             cameraManager.OpenCamera(cameraView.Camera.DeviceId, stateListener, null);
+
+                        _logger.LogTrace("PRE: await _previewStartedTcs.Task");
+                        await _previewStartedTcs.Task;
+                        _logger.LogTrace("POST: await _previewStartedTcs.Task");
+
                         timer.Start();
 
                         started = true;
