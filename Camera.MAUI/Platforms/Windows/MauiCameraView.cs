@@ -30,6 +30,7 @@ public sealed partial class MauiCameraView : UserControl, IDisposable
     private readonly CameraView cameraView;
     public MauiCameraView(CameraView cameraView)
     {
+
         this.cameraView = cameraView;
         mediaElement = new MediaPlayerElement
         {
@@ -410,7 +411,10 @@ public sealed partial class MauiCameraView : UserControl, IDisposable
                 if (frameReader != null)
                 {
                     await frameReader.StopAsync();
-                    frameReader.FrameArrived -= FrameReader_FrameArrived;
+                    if(frameReader != null)
+                    {//HO got an exception here so added nullcheck
+                        frameReader.FrameArrived -= FrameReader_FrameArrived;
+                    }
                     frameReader?.Dispose();
                     frameReader = null;
                 }
