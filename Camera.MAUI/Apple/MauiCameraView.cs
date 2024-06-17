@@ -454,7 +454,7 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
                     _ => UIDeviceOrientation.Portrait
                 };
             }
-            UIImageOrientation orientation = UIDevice.CurrentDevice.Orientation switch
+            UIImageOrientation orientation = currentDeviceOrientation switch
             {
                 UIDeviceOrientation.LandscapeRight => cameraView.Camera?.Position == CameraPosition.Back ? UIImageOrientation.Down : UIImageOrientation.Up,
                 UIDeviceOrientation.LandscapeLeft => cameraView.Camera?.Position == CameraPosition.Back ? UIImageOrientation.Up : UIImageOrientation.Down,
@@ -547,10 +547,23 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
                     {
                         var ciContext = new CIContext();
                         CGImage cgImage = ciContext.CreateCGImage(lastCapture, lastCapture.Extent);
-                        UIImageOrientation orientation = UIDevice.CurrentDevice.Orientation switch
+                        var currentDeviceOrientation = UIDevice.CurrentDevice.Orientation;
+                        //HO changed
+                        if (rotation != null)
                         {
-                            UIDeviceOrientation.LandscapeRight => UIImageOrientation.Down,
-                            UIDeviceOrientation.LandscapeLeft => UIImageOrientation.Up,
+                            currentDeviceOrientation = (rotation) switch
+                            {
+                                90 => UIDeviceOrientation.LandscapeLeft,
+                                180 => UIDeviceOrientation.PortraitUpsideDown,
+                                270 => UIDeviceOrientation.LandscapeRight,
+                                _ => UIDeviceOrientation.Portrait
+                            };
+                        }
+
+                        UIImageOrientation orientation = currentDeviceOrientation switch
+                        {
+                            UIDeviceOrientation.LandscapeRight => cameraView.Camera?.Position == CameraPosition.Back ? UIImageOrientation.Down : UIImageOrientation.Up,
+                            UIDeviceOrientation.LandscapeLeft => cameraView.Camera?.Position == CameraPosition.Back ? UIImageOrientation.Up : UIImageOrientation.Down,
                             UIDeviceOrientation.PortraitUpsideDown => UIImageOrientation.Left,
                             _ => UIImageOrientation.Right
                         };
