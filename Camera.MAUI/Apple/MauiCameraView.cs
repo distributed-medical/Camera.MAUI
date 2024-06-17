@@ -165,6 +165,7 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
                         ForceAutoFocus();
                         captureInput = new AVCaptureDeviceInput(captureDevice, out var err);
 
+
                         captureSession.AddInput(captureInput);
                         micDevice = micDevices.First(d => d.UniqueID == cameraView.Microphone.DeviceId);
                         micInput = new AVCaptureDeviceInput(micDevice, out err);
@@ -176,6 +177,8 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
                             captureSession.AddInput(micInput);
                         }
 
+
+
                         captureSession.AddOutput(videoDataOutput);
                         recordOutput = new AVCaptureMovieFileOutput();
 
@@ -183,7 +186,32 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
 
                         captureSession.AddOutput(recordOutput);
                         var movieFileOutputConnection = recordOutput.Connections[0];
-                        movieFileOutputConnection.VideoOrientation = (AVCaptureVideoOrientation)UIDevice.CurrentDevice.Orientation;
+
+
+                        var currentDeviceOrientation = UIDevice.CurrentDevice.Orientation;
+                        if (rotation != null)
+                        {
+                            currentDeviceOrientation = rotation switch
+                            {
+                                90 => UIDeviceOrientation.LandscapeLeft,
+                                180 => UIDeviceOrientation.PortraitUpsideDown,
+                                270 => UIDeviceOrientation.LandscapeRight,
+                                _ => UIDeviceOrientation.Portrait
+                            };
+                        }
+
+                        movieFileOutputConnection.VideoOrientation = (AVCaptureVideoOrientation)currentDeviceOrientation;
+
+                        //HO Added
+                        if(movieFileOutputConnection.ActiveVideoStabilizationMode == AVCaptureVideoStabilizationMode.Off)
+                        {
+                            movieFileOutputConnection.PreferredVideoStabilizationMode = AVCaptureVideoStabilizationMode.Standard;
+                        }
+#if DEBUG
+                        System.Diagnostics.Debug.WriteLine($"{nameof(StartRecordingAsync)}: {nameof(movieFileOutputConnection.ActiveVideoStabilizationMode)}: {movieFileOutputConnection.ActiveVideoStabilizationMode.ToString()}");
+#endif
+
+
 
 
 
