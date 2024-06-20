@@ -23,6 +23,7 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
     private readonly AVCaptureVideoDataOutput videoDataOutput;
     private AVCaptureMovieFileOutput recordOutput;
     private readonly AVCapturePhotoOutput photoOutput;
+    private AVCapturePhotoOutput snapshotOutput;
     private readonly AVCaptureSession captureSession;
     private AVCaptureDevice captureDevice;
     private AVCaptureDevice micDevice;
@@ -126,6 +127,9 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
                 {
                     try
                     {
+
+                        //HO changed
+                        /*
                         captureSession.SessionPreset = Resolution.Width switch
                         {
                             352 => AVCaptureSession.Preset352x288,
@@ -135,33 +139,12 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
                             3840 => AVCaptureSession.Preset3840x2160,
                             _ => AVCaptureSession.PresetPhoto
                         };
+                        */
+                        //HO SelectBestRecordingResolution will use ActiveFormat, AVCaptureSession.PresetInputPriority means we are using ActiveFormat
+                        captureSession.SessionPreset = AVCaptureSession.PresetInputPriority;
+
                         frames = 0;
                         captureDevice = camDevices.First(d => d.UniqueID == cameraView.Camera.DeviceId);
-
-                        {
-                            //HO Added
-                            fps ??= 30;
-
-                            //on tested ipad its 1 /33 => 33ms
-                            var cmTime = new CMTime(1, fps.Value);
-
-                            var format = captureDevice.ActiveFormat;
-
-                            //Note: ipad only return one range
-                            var frameRate = format.VideoSupportedFrameRateRanges.OrderByDescending(x => x.MaxFrameRate).First();
-                            var maxFrameRate = frameRate.MaxFrameRate;
-                            if(frameRate.MaxFrameRate < fps.Value)
-                            {
-                                cmTime = new CMTime(1, (int)frameRate.MaxFrameRate);
-                            }
-
-                            //HO well ipad seems to ignore my settings tried with 1/10 still got 1/33
-                            captureDevice.LockForConfiguration(out var error);
-                            captureDevice.ActiveVideoMinFrameDuration = cmTime;
-                            captureDevice.ActiveVideoMaxFrameDuration = cmTime;
-                            captureDevice.UnlockForConfiguration();
-                        }
-
                         ForceAutoFocus();
                         captureInput = new AVCaptureDeviceInput(captureDevice, out var err);
 
@@ -177,6 +160,23 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
                             captureSession.AddInput(micInput);
                         }
 
+                        //HO added 2024-06-20 BEGIN
+                        snapshotOutput = new AVCapturePhotoOutput();
+                        snapshotOutput.IsHighResolutionCaptureEnabled = true;
+                        snapshotOutput.MaxPhotoQualityPrioritization = AVCapturePhotoQualityPrioritization.Quality;
+                        captureSession.AutomaticallyConfiguresCaptureDeviceForWideColor = false;
+
+
+                        if (captureSession.CanAddOutput(snapshotOutput)) {
+                            captureSession.AddOutput(snapshotOutput);
+                        }
+                        else
+                        {
+                            Debug("failed to add snapshot output");
+                            return result = CameraResult.AccessError;
+                        }
+                        //HO added 2024-06-20 END
+
 
 
                         captureSession.AddOutput(videoDataOutput);
@@ -186,8 +186,7 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
 
                         captureSession.AddOutput(recordOutput);
                         var movieFileOutputConnection = recordOutput.Connections[0];
-
-
+                        
                         var currentDeviceOrientation = UIDevice.CurrentDevice.Orientation;
                         if (rotation != null)
                         {
@@ -199,85 +198,22 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
                                 _ => UIDeviceOrientation.Portrait
                             };
                         }
-
+                        
                         movieFileOutputConnection.VideoOrientation = (AVCaptureVideoOrientation)currentDeviceOrientation;
+                        
+
+                        //HO fix "h264"
+                        if(!SelectBestRecordingResolution(captureDevice, recordOutput, movieFileOutputConnection,  Resolution, fps, new[] { "h264" }))
+                        {
+                            return CameraResult.NoVideoFormatsAvailable;
+                        }
+
 
                         //HO Added
                         if(movieFileOutputConnection.ActiveVideoStabilizationMode == AVCaptureVideoStabilizationMode.Off)
                         {
                             movieFileOutputConnection.PreferredVideoStabilizationMode = AVCaptureVideoStabilizationMode.Standard;
                         }
-#if DEBUG
-                        System.Diagnostics.Debug.WriteLine($"{nameof(StartRecordingAsync)}: {nameof(movieFileOutputConnection.ActiveVideoStabilizationMode)}: {movieFileOutputConnection.ActiveVideoStabilizationMode.ToString()}");
-#endif
-
-
-
-
-
-                        /* ipad
-                        {
-                            {
-                                AVVideoCodecKey = hvc1;
-                                AVVideoCompressionPropertiesKey =     {
-                                    AllowFrameReordering = 1;
-                                    AllowOpenGOP = 1;
-                                    AverageBitRate = 4847616;
-                                    ExpectedFrameRate = 30;
-                                    MaxAllowedFrameQP = 41;
-                                    MaxKeyFrameIntervalDuration = 1;
-                                    MinAllowedFrameQP = 15;
-                                    Priority = 80;
-                                    ProfileLevel = "HEVC_Main_AutoLevel";
-                                    RealTime = 1;
-                                    RelaxAverageBitRateTarget = 1;
-                                };
-                                AVVideoHeightKey = 720;
-                                AVVideoWidthKey = 1280;
-                            }
-                        }
-                        */
-
-#pragma warning disable CA1422
-                        { //Set H264
-                            var newSettings = new NSDictionary(
-                                AVVideo.CodecKey, AVVideo.CodecH264
-                            );
-                            recordOutput.SetOutputSettings(newSettings, movieFileOutputConnection);
-                        }
-
-
-                        { //set bitrate, should we really do this??
-                            var settings = recordOutput.GetOutputSettings(movieFileOutputConnection);
-
-                            var sub = settings[AVVideo.CompressionPropertiesKey];  //AVVideoCompressionPropertiesKey
-
-                            if (sub != null)
-                            {
-                                //IPAD testad had value 4_847_616 
-                                var bitrate = heightToDesiredBitrateFunc?.Invoke((int)Resolution.Height) ?? 10_000_000;
-
-                                sub.SetValueForKey(new NSString(bitrate.ToString()), AVVideo.AverageBitRateKey);
-
-                                var newSettings = new NSDictionary(
-                                    AVVideo.CodecKey, AVVideo.CodecH264,
-                                    AVVideo.CompressionPropertiesKey, sub
-                                );
-                                recordOutput.SetOutputSettings(newSettings, movieFileOutputConnection);
-                            }
-                        }
-#pragma warning restore CA1422
-
-
-#if DEBUG
-                        {
-                            var settings = recordOutput.GetOutputSettings(movieFileOutputConnection);
-                            System.Diagnostics.Debug.WriteLine(settings);
-                        }
-#endif
-
-
-
                         captureSession.StartRunning();
                         if (File.Exists(file)) File.Delete(file);
                         
@@ -286,8 +222,9 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
                         SetZoomFactor(cameraView.ZoomFactor);
                         started = true;
                     }
-                    catch
+                    catch(Exception ex)
                     {
+                        _ = ex;
                         result = CameraResult.AccessError;
                     }
                 }
@@ -456,6 +393,11 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
 
     internal async Task<Stream> TakePhotoAsync(ImageFormat imageFormat, int? rotation)
     {
+        return await TakePhotoAsync(photoOutput, imageFormat, rotation);
+    }
+
+    private async Task<Stream> TakePhotoAsync(AVCapturePhotoOutput photoOrSnapshotOutput, ImageFormat imageFormat, int? rotation)
+    {
         photoError = photoTaken = false;
         var photoSettings = AVCapturePhotoSettings.Create();
         photoSettings.FlashMode = cameraView.FlashMode switch
@@ -464,7 +406,7 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
             FlashMode.Enabled => AVCaptureFlashMode.On,
             _ => AVCaptureFlashMode.Off
         };
-        photoOutput.CapturePhoto(photoSettings, this);
+        photoOrSnapshotOutput.CapturePhoto(photoSettings, this);
         while(!photoTaken && !photoError) await Task.Delay(50);
         if (photoError || photo == null)
             return null;
@@ -549,6 +491,7 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
                         }
                         else
                             result = ImageSource.FromStream(() => stream);
+
                     }
                 }
                 catch
@@ -566,11 +509,13 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
 
         if (started && lastCapture != null)
         {
-            if (File.Exists(SnapFilePath)) File.Delete(SnapFilePath);            
-            MainThread.InvokeOnMainThreadAsync(() =>
+            if (File.Exists(SnapFilePath)) File.Delete(SnapFilePath);      
+            
+            MainThread.InvokeOnMainThreadAsync(async () =>
             {
                 try
                 {
+                    /*
                     lock (lockCapture)
                     {
                         var ciContext = new CIContext();
@@ -590,10 +535,10 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
 
                         UIImageOrientation orientation = currentDeviceOrientation switch
                         {
-                            UIDeviceOrientation.LandscapeRight => cameraView.Camera?.Position == CameraPosition.Back ? UIImageOrientation.Down : UIImageOrientation.Up,
-                            UIDeviceOrientation.LandscapeLeft => cameraView.Camera?.Position == CameraPosition.Back ? UIImageOrientation.Up : UIImageOrientation.Down,
-                            UIDeviceOrientation.PortraitUpsideDown => UIImageOrientation.Left,
-                            _ => UIImageOrientation.Right
+                            UIDeviceOrientation.LandscapeRight => UIImageOrientation.Right,
+                            UIDeviceOrientation.LandscapeLeft => UIImageOrientation.Left,
+                            UIDeviceOrientation.PortraitUpsideDown => UIImageOrientation.Down,
+                            _ => UIImageOrientation.Up
                         };
                         var image = UIImage.FromImage(cgImage, UIScreen.MainScreen.Scale, orientation);
                         var image2 = CropImage(image);
@@ -606,6 +551,12 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
                                 image2.AsJPEG().Save(NSUrl.FromFilename(SnapFilePath), true);
                                 break;
                         }
+                    }
+                    */
+                    using (var fileStream = new FileStream(SnapFilePath, FileMode.Create, FileAccess.Write, FileShare.ReadWrite))
+                    {
+                        var stream = await TakePhotoAsync(snapshotOutput, imageFormat, rotation);
+                        await stream.CopyToAsync(fileStream);
                     }
                 }
                 catch
@@ -769,5 +720,216 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
     {
         
     }
+
+
+    void Debug(string str)
+    {
+        System.Diagnostics.Debug.WriteLine(str);
+    }
+
+    //from capture ios
+    float foundMaxFramerate = 0.0f;
+    int desiredVideoResolution = 0;
+    float desiredVideoFramerate = 0.0f;
+    AVCaptureDeviceFormat foundVideoFormat = null;
+    int selectedVideoResolution = 0;
+    float selectedVideoFramerate = 0.0f;
+
+
+
+    AVVideoCodecType? CodecFromString(string codec)
+    {
+        AVVideoCodecType? retval = codec switch
+        {
+            "h264" => AVVideoCodecType.H264,
+            "hevc" => AVVideoCodecType.Hevc,
+            _ => null
+        };
+        return retval;
+    }
+
+
+
+    bool SelectBestRecordingResolution(AVCaptureDevice videoCaptureDevice, AVCaptureMovieFileOutput videoOutput, AVCaptureConnection videoOutputConnection,  Size wantedResolution, float? inWantedFps, string[] supportedVideoCodecs)
+    {
+        bool retVal = true;
+        // Resolve the desired video settings, defaulting to 720p30 whenever something seems broken
+        desiredVideoResolution = (int)wantedResolution.Height;
+        desiredVideoFramerate = inWantedFps ?? 30;
+
+
+        desiredVideoResolution = Math.Min(desiredVideoResolution, 2160); // Higher blows up when trying to record
+
+        // Format selection. Guiding principles:
+        // - try to find a format that matches the requested vertical resolution
+        // - if we can't find an exact match, pick the highest resolution that is still lower than the requested one
+        // - never pick a format with a higher vertical resolution than requested
+        // - among the matches, pick the one with the highest frame rate
+        // - but also optimize for HRSI (still resolution), never picking a format with a lower HRSI once we've found one that is acceptable...
+
+        var foundMaxResolution = 0;
+        var foundFoV = 0.0f;
+        var foundStillResolution = 0;
+
+        if (foundVideoFormat == null)
+        {
+
+            foreach (var format in videoCaptureDevice.Formats)
+            {
+                var formatFormatDescription = format.FormatDescription as CoreMedia.CMVideoFormatDescription;
+                var dimHeight = 0;
+                if (formatFormatDescription != null) {
+                    dimHeight = formatFormatDescription.Dimensions.Height;
+                }
+                //var dimHeight = ((CoreMedia.CMVideoFormatDescription)(format.FormatDescription)).Dimensions.Height.;
+
+                bool considerThisFormat = true;
+
+                if (foundMaxResolution > 0 && dimHeight > desiredVideoResolution) {
+                    // We've found a format that works, we should not use one with higher resolution than requested.
+                    Debug($"skipping format with excessive resolution:{format}");
+                    considerThisFormat = false;
+                }
+
+
+                if (considerThisFormat)
+                {
+                    foreach (var frr in format.VideoSupportedFrameRateRanges)
+                    {
+                        var stillResolution = format.HighResolutionStillImageDimensions.Width * format.HighResolutionStillImageDimensions.Height;
+
+
+                        if (dimHeight == foundMaxResolution)
+                        {
+                            // We've already found a format with the desired vertical resolution, let's see if this one is an improvement.
+                            // We don't want to reduce our field of view
+                            if (considerThisFormat && format.VideoFieldOfView < foundFoV)
+                            {
+                                Debug($"skipping format with reduced FoV:{format}, {frr}");
+                                considerThisFormat = false;
+                            }
+
+                            // We don't want to reduce the still resolution
+                            if (considerThisFormat && stillResolution < foundStillResolution)
+                            {
+                                Debug($"skipping format with reduced still resolution: {format}, {frr}");
+                                considerThisFormat = false;
+                            }
+
+                            // We prefer non-binned video
+                            if (considerThisFormat && format.VideoBinned)
+                            {
+                                Debug($"skipping format with binned video: {format}, {frr}");
+                                considerThisFormat = false;
+                            }
+
+                            // Skip formats with a lower frame rate, unless it also increases our still resolution
+                            if (considerThisFormat && (frr.MaxFrameRate < foundMaxFramerate) && (frr.MaxFrameRate < desiredVideoFramerate) && (stillResolution <= foundStillResolution))
+                            {
+                                Debug($"skipping format with lower frame rate: {format}, {frr}");
+                                considerThisFormat = false;
+                            }
+
+                            // Don't downgrade from 420f to 420v
+                            if (considerThisFormat && (format.FormatDescription.MediaSubType == (uint)CVPixelFormatType.CV420YpCbCr8BiPlanarVideoRange)
+                                && (foundVideoFormat?.FormatDescription.MediaSubType == (uint)CVPixelFormatType.CV420YpCbCr8BiPlanarFullRange))
+                            {
+                                Debug($"skipping format with reduced color space: {format}");
+                                considerThisFormat = false;
+                            }
+
+                            if (considerThisFormat && (foundVideoFormat?.HighestPhotoQualitySupported ?? false) && !format.HighestPhotoQualitySupported)
+                            {
+                                Debug($"skipping format without highest quality photo: {format}");
+                                considerThisFormat = false;
+                            }
+                            var iosVer =  int.Parse(DeviceInfo.Current.VersionString.Split('.')[0]);
+                            if (considerThisFormat && iosVer > 15)
+                            {
+                                if (considerThisFormat && foundVideoFormat.HighPhotoQualitySupported && !format.HighPhotoQualitySupported)
+                                {
+                                    Debug($"skipping format without high quality photo:{format}");
+                                    considerThisFormat = false;
+                                }
+                            }
+                        }
+
+                        // fallthrough
+
+                        if (considerThisFormat || (foundMaxResolution < desiredVideoResolution) && (dimHeight > foundMaxResolution))
+                        {
+                            // We haven't found the resolution we need yet, or this is better than the old one.
+                            Debug($"found potential video format: {format} {frr}");
+                            foundVideoFormat = format;
+                            foundMaxFramerate = (float)frr.MaxFrameRate;
+                            foundMaxResolution = (int)dimHeight;
+                            foundFoV = format.VideoFieldOfView;
+                            foundStillResolution = stillResolution;
+                            selectedVideoResolution = (int)dimHeight;
+                        }
+                        else
+                        {
+                            Debug($"not considering:{format} {frr}");
+                        }
+                    }
+                }
+            }
+        }
+        if(foundVideoFormat != null) {
+            Debug($"selected video format: {foundVideoFormat}");
+            selectedVideoFramerate = Math.Min(foundMaxFramerate, desiredVideoFramerate);
+            Debug($"selected video frame rate: ({selectedVideoFramerate}) fps");
+            var frameDuration = new CMTime(value: 1, timescale: (int)selectedVideoFramerate);
+
+            videoCaptureDevice.LockForConfiguration(out NSError error);
+            if (error == null)
+            {
+                videoCaptureDevice.ActiveFormat = foundVideoFormat!;
+                videoCaptureDevice.ActiveVideoMinFrameDuration = frameDuration;
+                videoCaptureDevice.ActiveVideoMaxFrameDuration = frameDuration;
+                videoCaptureDevice.UnlockForConfiguration();
+            }
+            else
+            {
+                Debug($"failed to set video format:{error}");
+            }
+        }
+
+        Debug($"want one of these codecs: {string.Join(", ", supportedVideoCodecs)}");
+        var availableVideoCodecTypes = videoOutput.AvailableVideoCodecTypes.Select(x => x.ToString());
+        Debug($"have these codecs available: {string.Join(", ", availableVideoCodecTypes)}");
+
+        var done = false;
+        foreach (var  supportedVideoCodec in supportedVideoCodecs)
+        {
+            var supportedAvVideoCodecType = CodecFromString(supportedVideoCodec);
+
+            if (supportedAvVideoCodecType != null)
+            {
+                var strAvVideoCodecType = AVFoundation.AVVideoCodecTypeExtensions.GetConstant((AVVideoCodecType)supportedAvVideoCodecType).ToString();
+                var strVideoCodecTypeFound = availableVideoCodecTypes.SingleOrDefault(x => (x  == strAvVideoCodecType));
+                if (strVideoCodecTypeFound?.Any() ?? false)
+                {
+                    Debug($"selecting codec: {strVideoCodecTypeFound}");
+
+                    var newSettings = new NSDictionary(
+                        AVVideo.CodecKey, new NSString(strVideoCodecTypeFound)
+                    );
+
+                    videoOutput.SetOutputSettings(newSettings, videoOutputConnection);
+                    done = true;
+                    break;
+                }
+            }
+        }
+
+        if (!done) {
+            Debug("failed to locate any desired video codec");
+            retVal = false;
+        }
+        return retVal;
+    }
 }
+
+
 #endif

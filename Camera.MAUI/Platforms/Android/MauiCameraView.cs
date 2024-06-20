@@ -345,7 +345,7 @@ internal class MauiCameraView: GridLayout
     }
 
     object _previewStartedTcsLock = new object();
-    TaskCompletionSource? _previewStartedTcs = null;
+    TaskCompletionSource _previewStartedTcs = null;
 
     internal async Task<CameraResult> StartCameraAsync(Microsoft.Maui.Graphics.Size PhotosResolution, int maxPhotoResolution)
     {
