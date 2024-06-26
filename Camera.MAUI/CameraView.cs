@@ -17,6 +17,16 @@ using DecodeDataType = System.Object;
 
 namespace Camera.MAUI;
 
+public record OtherRecordingParameters
+{
+    public int Fps { get; init; }
+    public Func<int, int> HeightToDesiredBitrateFunc { get; init; }
+    public bool WithAudio { get; init; } = true;
+    public int? RotationRelativeToPortrait { get; init; } = null;
+    public IEnumerable<string> SupportedVideoCodecs { get; init; } = null;
+}
+
+
 public class CameraView : View, ICameraView
 {
     public static readonly BindableProperty SelfProperty = BindableProperty.Create(nameof(Self), typeof(CameraView), typeof(CameraView), null, BindingMode.OneWayToSource);
@@ -487,7 +497,7 @@ public class CameraView : View, ICameraView
     /// <paramref name="file"/> Full path to file where video will be stored.
     /// <paramref name="Resolution"/> Sets the Video Resolution. It must be in Camera.AvailableResolutions. If width or height is 0, max resolution will be taken.
     /// </summary>
-    public async Task<CameraResult> StartRecordingAsync(string file, Size Resolution = default, int? fps = null, Func<int, int> heightToDesiredBitrateFunc = null, bool withAudio = true, int? rotation = null)
+    public async Task<CameraResult> StartRecordingAsync(string file, Size Resolution = default, OtherRecordingParameters otherRecordingParameters = null)
     {
         CameraResult result = CameraResult.AccessError;
         if (Camera != null)
@@ -499,7 +509,7 @@ public class CameraView : View, ICameraView
             }
             if (Handler != null && Handler is CameraViewHandler handler)
             {
-                result = await handler.StartRecordingAsync(file, Resolution, fps, heightToDesiredBitrateFunc, withAudio, rotation);
+                result = await handler.StartRecordingAsync(file, Resolution, otherRecordingParameters);
                 if (result == CameraResult.Success)
                 {
                     BarCodeResults = null;

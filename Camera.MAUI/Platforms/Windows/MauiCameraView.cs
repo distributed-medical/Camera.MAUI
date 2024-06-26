@@ -174,7 +174,7 @@ public sealed partial class MauiCameraView : UserControl, IDisposable
             }
         }
     }
-    internal async Task<CameraResult> StartRecordingAsync(string file, Size Resolution, int? fps = null, Func<int, int> heightToDesiredBitrateFunc = null, bool withAudio = true, int? rotation = null)
+    internal async Task<CameraResult> StartRecordingAsync(string file, Size Resolution, OtherRecordingParameters otherRecordingParameters)
     {
         CameraResult result = CameraResult.Success;
 
@@ -483,14 +483,11 @@ public sealed partial class MauiCameraView : UserControl, IDisposable
                 MemoryStream stream = new();
                 BitmapEncoder encoder = await BitmapEncoder.CreateAsync(iformat, stream.AsRandomAccessStream());
                 var img = SoftwareBitmap.Convert(snapshot, BitmapPixelFormat.Rgba8, BitmapAlphaMode.Premultiplied);
-
                 encoder.SetSoftwareBitmap(img);
                 try
                 {
                     if (flowDirection == Microsoft.UI.Xaml.FlowDirection.RightToLeft)
-                    {
                         encoder.BitmapTransform.Flip = BitmapFlip.Horizontal;
-                    }
                     /*
                     if (cameraView.PhotosResolution.Width != 0 && cameraView.PhotosResolution.Height != 0)
                     {

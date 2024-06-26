@@ -115,13 +115,14 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
             }
         }
     }
-    public async Task<CameraResult> StartRecordingAsync(string file, Size Resolution, int? fps = null, Func<int, int> heightToDesiredBitrateFunc = null, bool withAudio = true, int? rotation = null)
+
+    public async Task<CameraResult> StartRecordingAsync(string file, Size Resolution, OtherRecordingParameters otherRecordingParameters)
     {
         CameraResult result = CameraResult.Success;
         if (initiated)
         {
             if (started) StopCamera();
-            if (await CameraView.RequestPermissions(withAudio))
+            if (await CameraView.RequestPermissions(otherRecordingParameters?.WithAudio ?? true))
             {
                 if (cameraView.Camera != null && cameraView.Microphone != null && captureSession != null)
                 {
@@ -155,7 +156,7 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
 
                         //HO changed
                         //captureSession.AddInput(micInput);
-                        if (withAudio)
+                        if (otherRecordingParameters?.WithAudio ?? true)
                         {
                             captureSession.AddInput(micInput);
                         }
@@ -188,9 +189,9 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
                         var movieFileOutputConnection = recordOutput.Connections[0];
                         
                         var currentDeviceOrientation = UIDevice.CurrentDevice.Orientation;
-                        if (rotation != null)
+                        if (otherRecordingParameters.RotationRelativeToPortrait != null)
                         {
-                            currentDeviceOrientation = rotation switch
+                            currentDeviceOrientation = otherRecordingParameters.RotationRelativeToPortrait switch
                             {
                                 90 => UIDeviceOrientation.LandscapeLeft,
                                 180 => UIDeviceOrientation.PortraitUpsideDown,
@@ -202,8 +203,7 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
                         movieFileOutputConnection.VideoOrientation = (AVCaptureVideoOrientation)currentDeviceOrientation;
                         
 
-                        //HO fix "h264"
-                        if(!SelectBestRecordingResolution(captureDevice, recordOutput, movieFileOutputConnection,  Resolution, fps, new[] { "h264" }))
+                        if(!SelectBestRecordingResolution(captureDevice, recordOutput, movieFileOutputConnection,  Resolution, otherRecordingParameters))
                         {
                             return CameraResult.NoVideoFormatsAvailable;
                         }
@@ -735,27 +735,27 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
     int selectedVideoResolution = 0;
     float selectedVideoFramerate = 0.0f;
 
-
+    const string _strH264 = "h264";
 
     AVVideoCodecType? CodecFromString(string codec)
     {
         AVVideoCodecType? retval = codec switch
         {
-            "h264" => AVVideoCodecType.H264,
+            _strH264 => AVVideoCodecType.H264,
             "hevc" => AVVideoCodecType.Hevc,
-            _ => null
+            _ => AVVideoCodecType.H264,
         };
         return retval;
     }
 
 
 
-    bool SelectBestRecordingResolution(AVCaptureDevice videoCaptureDevice, AVCaptureMovieFileOutput videoOutput, AVCaptureConnection videoOutputConnection,  Size wantedResolution, float? inWantedFps, string[] supportedVideoCodecs)
+    bool SelectBestRecordingResolution(AVCaptureDevice videoCaptureDevice, AVCaptureMovieFileOutput videoOutput, AVCaptureConnection videoOutputConnection,  Size wantedResolution, OtherRecordingParameters otherRecordingParameters)
     {
         bool retVal = true;
         // Resolve the desired video settings, defaulting to 720p30 whenever something seems broken
         desiredVideoResolution = (int)wantedResolution.Height;
-        desiredVideoFramerate = inWantedFps ?? 30;
+        desiredVideoFramerate = otherRecordingParameters?.Fps ?? 30;
 
 
         desiredVideoResolution = Math.Min(desiredVideoResolution, 2160); // Higher blows up when trying to record
@@ -894,6 +894,7 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
                 Debug($"failed to set video format:{error}");
             }
         }
+        var supportedVideoCodecs = (otherRecordingParameters?.SupportedVideoCodecs?.Any(x => x.Any()) ?? false) ? (otherRecordingParameters?.SupportedVideoCodecs) : new string[] { _strH264 };
 
         Debug($"want one of these codecs: {string.Join(", ", supportedVideoCodecs)}");
         var availableVideoCodecTypes = videoOutput.AvailableVideoCodecTypes.Select(x => x.ToString());

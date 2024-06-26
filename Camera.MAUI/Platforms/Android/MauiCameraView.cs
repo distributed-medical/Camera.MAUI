@@ -153,11 +153,12 @@ internal class MauiCameraView: GridLayout
     }
 
 
-    internal async Task<CameraResult> StartRecordingAsync(string file, Microsoft.Maui.Graphics.Size Resolution, int? fps = null, Func<int, int> bitrate = null, bool withAudio = true, int? rotation = null)
+    internal async Task<CameraResult> StartRecordingAsync(string file, Microsoft.Maui.Graphics.Size Resolution, OtherRecordingParameters otherRecordingParameters = null)
     {
         var result = CameraResult.Success;
         if (initiated && !recording)
         {
+            var withAudio = otherRecordingParameters?.WithAudio ?? true;
             if (await CameraView.RequestPermissions(withAudio, true))
             {
                 if (started) StopCamera();
@@ -196,7 +197,7 @@ internal class MauiCameraView: GridLayout
 
                         //TODO: HO verify this
                         //mediaRecorder.SetVideoFrameRate(30);
-                        mediaRecorder.SetVideoFrameRate(fps ?? 30);
+                        mediaRecorder.SetVideoFrameRate(otherRecordingParameters?.Fps ?? 30);
 
                         var maxVideoSize = ChooseMaxVideoSize(map.GetOutputSizes(Class.FromType(typeof(ImageReader))));
                         if (Resolution.Width != 0 && Resolution.Height != 0)
@@ -204,9 +205,18 @@ internal class MauiCameraView: GridLayout
                         mediaRecorder.SetVideoSize(maxVideoSize.Width, maxVideoSize.Height);
 
                         //TODO: HO verify this
-                        mediaRecorder.SetVideoEncodingBitRate(bitrate?.Invoke((int)Resolution.Height) ?? 10_000_000);
+                        //HO test setCaptureRate also
+                        mediaRecorder.SetVideoEncodingBitRate(otherRecordingParameters?.HeightToDesiredBitrateFunc?.Invoke((int)Resolution.Height) ?? 10_000_000);
 
-                        mediaRecorder.SetVideoEncoder(VideoEncoder.H264);
+                        var strEncoder = otherRecordingParameters?.SupportedVideoCodecs?.FirstOrDefault();
+                        var encoder = strEncoder switch
+                        {
+                            "hevc" => VideoEncoder.Hevc,
+                            "h264" => VideoEncoder.H264,
+                            _ => VideoEncoder.H264
+                        };
+
+                        mediaRecorder.SetVideoEncoder(encoder);
 
                         //HO changed
                         //mediaRecorder.SetAudioEncoder(AudioEncoder.Aac);
@@ -221,12 +231,9 @@ internal class MauiCameraView: GridLayout
 
                         //HO changed
                         //int rotation = (int)windowManager.DefaultDisplay.Rotation;
-                        if (!rotation.HasValue)
-                        {
-                            rotation = (int)windowManager.DefaultDisplay.Rotation;
-                        }
+                        int rotation = otherRecordingParameters?.RotationRelativeToPortrait ?? (int)windowManager.DefaultDisplay.Rotation;
 
-                        int orientation = cameraView.Camera.Position == CameraPosition.Back ? orientation = ORIENTATIONS.Get(rotation.Value) : orientation = ORIENTATIONSFRONT.Get(rotation.Value);
+                        int orientation = cameraView.Camera.Position == CameraPosition.Back ? orientation = ORIENTATIONS.Get(rotation) : orientation = ORIENTATIONSFRONT.Get(rotation);
                         mediaRecorder.SetOrientationHint(orientation);
                         mediaRecorder.Prepare();
 
@@ -608,7 +615,6 @@ internal class MauiCameraView: GridLayout
 
 
     private Bitmap TakeSnap()
-    //private Bitmap TakeSnap_org()
     {
         Bitmap bitmap = null;
         try
@@ -657,52 +663,6 @@ internal class MauiCameraView: GridLayout
         catch { }
         return bitmap;
     }
-
-    /*
-    private Bitmap TakeSnap()
-    //private Bitmap TakeSnap_new()
-    {
-    Bitmap bitmap = null;
-        try
-        {
-            MainThread.InvokeOnMainThreadAsync(() => { 
-                bitmap = textureView.GetBitmap(null); bitmap = textureView.Bitmap; 
-            }).Wait();
-
-            if (bitmap != null)
-            {
-                int oriWidth = bitmap.Width;
-                int oriHeight = bitmap.Height;
-
-                bitmap = Bitmap.CreateBitmap(bitmap, 0, 0, bitmap.Width, bitmap.Height, textureView.GetTransform(null), false);
-                float xscale = (float)oriWidth / bitmap.Width;
-                float yscale = (float)oriHeight / bitmap.Height;
-                //bitmap = Bitmap.CreateBitmap(bitmap, Math.Abs(bitmap.Width - (int)((float)Width*xscale)) / 2, Math.Abs(bitmap.Height - (int)((float)Height * yscale)) / 2, Width, Height);
-                var cameraViewSizeInPixels = GetCameraViewSizeInPixels();
-
-
-
-                //HO check why these differs when starting scanbarcode page and if cameraViewSizeInPixels is really needed or we can go with textureView width Height
-                bitmap = Bitmap.CreateBitmap(bitmap, 0, 0, (int)Math.Min(bitmap.Width, cameraViewSizeInPixels.Width), (int)Math.Min(bitmap.Height,cameraViewSizeInPixels.Height));
-                Matrix matrix = null;
-                if (textureView.ScaleX == -1)
-                {
-                    matrix ??= new();
-                    matrix.PreScale(-1, 1);
-                }
-                if (matrix != null)
-                {
-                    //HO Recommended default is to set filter to 'true' as the cost of bilinear filtering is typically minimal and the improved image quality is significant.
-                    bitmap = Bitmap.CreateBitmap(bitmap, 0, 0, bitmap.Width, bitmap.Height, matrix, true);
-                }
-            }
-        }
-        catch (Exception ex) {
-            _logger.LogWarning(ex, nameof(TakeSnap));
-        }
-        return bitmap;
-    }
-    */
 
     private static Rect CalculateScalerRect(Rect sensorRect, Single zoomFactor)
     {
