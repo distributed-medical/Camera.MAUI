@@ -400,6 +400,16 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
     {
         photoError = photoTaken = false;
         var photoSettings = AVCapturePhotoSettings.Create();
+
+
+        //HO Added
+        if (photoOrSnapshotOutput == snapshotOutput)
+        { //This gives snapshot a higher resolution
+            photoSettings.IsHighResolutionPhotoEnabled = snapshotOutput.IsHighResolutionCaptureEnabled;
+            photoSettings.PhotoQualityPrioritization = snapshotOutput.MaxPhotoQualityPrioritization;
+        }
+
+
         photoSettings.FlashMode = cameraView.FlashMode switch
         {
             FlashMode.Auto => AVCaptureFlashMode.Auto,
