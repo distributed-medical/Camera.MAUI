@@ -243,9 +243,11 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
         return StartCameraAsync(cameraView.PhotosResolution, cameraView.MaxPhotoResolution);
     }
 
+    int _maxPhotoResolution = int.MaxValue;
+
     public async Task<CameraResult> StartCameraAsync(Size PhotosResolution, int maxPhotoResolution)
     {
-        _ = maxPhotoResolution;
+        _maxPhotoResolution = maxPhotoResolution;
         CameraResult result = CameraResult.Success;
         if (initiated)
         {
@@ -693,8 +695,51 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
         NSData imageData = AVCapturePhotoOutput.GetJpegPhotoDataRepresentation(photoSampleBuffer, previewPhotoSampleBuffer);
 
         photo = new UIImage(imageData);
+
+        //HO Added
+        //HO scale directly does not work on ios so we cant use the shortcut "new UIImage(imageData, scale)";
+        var resolution = photo.Size.Width * photo.Size.Height;
+        if (resolution > _maxPhotoResolution)
+        {
+            var scale = Math.Sqrt(((double)_maxPhotoResolution) / resolution);
+            var prevFoto = photo;
+            photo = photo.Scale(new CGSize((int)Math.Max(1, scale * photo.Size.Width), (int)Math.Max(1, scale * photo.Size.Height)));
+            prevFoto.Dispose();
+
+            prevFoto = photo;
+            var rotatedCgImage = Rotate90Degrees(photo.CGImage);
+            prevFoto.Dispose();
+
+            photo = UIImage.FromImage(rotatedCgImage);
+            rotatedCgImage.Dispose();
+        }
         photoTaken = true;
     }
+
+
+    CGImage Rotate90Degrees(CGImage cgImageRef)
+    {
+        int cgImageWidth = (int)cgImageRef.Width;
+        int cgImageHeight = (int)cgImageRef.Height;
+
+        var colorSpace = CGColorSpace.CreateDeviceRGB();
+        var bytesPerPixel = 4;
+
+        int targetWidth = cgImageHeight;
+        int targetHeight = cgImageWidth;
+
+        var bytesPerRow = bytesPerPixel * targetWidth;
+        var bitsPerComponent = 8;
+
+        var context = new CGBitmapContext(new nint(0), targetWidth, targetHeight, bitsPerComponent, bytesPerRow, colorSpace,
+            CoreGraphics.CGImageAlphaInfo.PremultipliedLast);
+        context.RotateCTM(new nfloat(-(Math.PI + Math.PI / 2)));
+        context.TranslateCTM(0, -targetWidth);
+        context.DrawImage(new CGRect(0, 0, cgImageWidth, cgImageHeight), cgImageRef);
+        var rotatedCGImage = context.ToImage();
+        return rotatedCGImage;
+    }
+
 
     public override void LayoutSubviews()
     {
