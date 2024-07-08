@@ -220,9 +220,14 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
                         captureSession.StartRunning();
                         if (File.Exists(file)) File.Delete(file);
                         
-                        recordOutput.StartRecordingToOutputFile(NSUrl.FromFilename(file), this);
                         UpdateMirroredImage();
                         SetZoomFactor(cameraView.ZoomFactor);
+
+                        //HO  changed let captureSession run a while or we get dark video at start while camera is measuring light 180ms seems ok
+                        await Task.Delay(180);
+
+                        //HO  changed moved StartRecordingToOutputFile below UpdateMirroredImage and SetZoomFactor
+                        recordOutput.StartRecordingToOutputFile(NSUrl.FromFilename(file), this);
                         started = true;
                     }
                     catch(Exception ex)
