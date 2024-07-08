@@ -185,6 +185,7 @@ internal class MauiCameraView: GridLayout
                         //mediaRecorder.SetAudioSource(AudioSource.Mic);
                         if (withAudio)
                         {
+                            audioManager.Mode = Mode.Normal;
                             mediaRecorder.SetAudioSource(AudioSource.Mic);
                         }
 
@@ -759,21 +760,26 @@ internal class MauiCameraView: GridLayout
                     if (textureView.ScaleX == -1 || imageFormat != ImageFormat.JPEG)
                     {
                         Bitmap bitmap = BitmapFactory.DecodeByteArray(capturePhoto, 0, capturePhoto.Length);
-                        if (textureView.ScaleX == -1)
+                        if (bitmap != null)
                         {
-                            Matrix matrix = new();
-                            matrix.PreRotate(rotation.Value);
-                            matrix.PostScale(-1, 1);
-                            bitmap = Bitmap.CreateBitmap(bitmap, 0, 0, bitmap.Width, bitmap.Height, matrix, false);
+                            if (textureView.ScaleX == -1)
+                            {
+                                Matrix matrix = new();
+                                matrix.PreRotate(rotation.Value);
+                                matrix.PostScale(-1, 1);
+                                var prevBitmap = bitmap;
+                                bitmap = Bitmap.CreateBitmap(bitmap, 0, 0, bitmap.Width, bitmap.Height, matrix, false);
+                                prevBitmap.Dispose();
+                            }
+                            var iformat = imageFormat switch
+                            {
+                                ImageFormat.JPEG => Bitmap.CompressFormat.Jpeg,
+                                _ => Bitmap.CompressFormat.Png
+                            };
+                            stream = new();
+                            bitmap.Compress(iformat, 100, stream);
+                            stream.Position = 0;
                         }
-                        var iformat = imageFormat switch
-                        {
-                            ImageFormat.JPEG => Bitmap.CompressFormat.Jpeg,
-                            _ => Bitmap.CompressFormat.Png
-                        };
-                        stream = new();
-                        bitmap.Compress(iformat, 100, stream);
-                        stream.Position = 0;
                     }
                     else
                     {
