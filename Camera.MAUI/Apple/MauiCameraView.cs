@@ -121,8 +121,11 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
         CameraResult result = CameraResult.Success;
         if (initiated)
         {
+            var withAudio = otherRecordingParameters?.WithAudio ?? true;
+
             if (started) StopCamera();
-            if (await CameraView.RequestPermissions(otherRecordingParameters?.WithAudio ?? true))
+
+            if (await CameraView.RequestPermissions(withAudio))
             {
                 if (cameraView.Camera != null && cameraView.Microphone != null && captureSession != null)
                 {
@@ -151,13 +154,13 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
 
 
                         captureSession.AddInput(captureInput);
-                        micDevice = micDevices.First(d => d.UniqueID == cameraView.Microphone.DeviceId);
-                        micInput = new AVCaptureDeviceInput(micDevice, out err);
-
                         //HO changed
                         //captureSession.AddInput(micInput);
-                        if (otherRecordingParameters?.WithAudio ?? true)
+                        if (withAudio)
                         {
+                            micDevice = micDevices.First(d => d.UniqueID == cameraView.Microphone.DeviceId);
+                            micInput = new AVCaptureDeviceInput(micDevice, out err);
+
                             captureSession.AddInput(micInput);
                         }
 
