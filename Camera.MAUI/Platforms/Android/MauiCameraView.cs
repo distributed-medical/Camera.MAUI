@@ -339,8 +339,6 @@ internal class MauiCameraView: GridLayout
                 //AdjustAspectRatio(videoSize.Width, videoSize.Height);
                 AdjustAspectRatio(videoSize.Width, videoSize.Height);
                 SetZoomFactor(cameraView.ZoomFactor);
-                //HO Added UpdateTorch //so when we reenter camera page it will always light up again
-                UpdateTorch();
                 //previewSession.SetRepeatingRequest(previewBuilder.Build(), null, null);
                 if (recording)
                     mediaRecorder?.Start();
@@ -457,6 +455,9 @@ internal class MauiCameraView: GridLayout
                         timer.Start();
 
                         started = true;
+                        
+                        //HO Added UpdateTorch //so when we reenter camera page it will always light up again
+                        UpdateTorch();
                     }
                     catch
                     {
