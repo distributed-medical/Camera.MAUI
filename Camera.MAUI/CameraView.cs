@@ -324,7 +324,7 @@ public class CameraView : View, ICameraView
     public CameraView()
     {
 #if ANDROID
-        _logger = MauiApplication.Current.Services.GetService<ILogger<CameraView>>();
+        _logger = IPlatformApplication.Current.Services.GetService<ILogger<CameraView>>();
 #endif
 
         BarcodeReader = new BarcodeReaderGeneric();

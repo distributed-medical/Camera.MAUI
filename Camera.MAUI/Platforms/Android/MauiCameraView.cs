@@ -62,7 +62,7 @@ internal class MauiCameraView: GridLayout
 
     public MauiCameraView(Context context, CameraView cameraView) : base(context)
     {
-        _logger = MauiApplication.Current.Services.GetService<ILogger<MauiCameraView>>();
+        _logger = IPlatformApplication.Current.Services.GetService<ILogger<MauiCameraView>>();
         this.context = context;
         this.cameraView = cameraView;
 
