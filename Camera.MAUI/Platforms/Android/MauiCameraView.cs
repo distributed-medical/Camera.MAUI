@@ -316,16 +316,24 @@ internal class MauiCameraView: GridLayout
         }
 
         sessionCallback = new PreviewCaptureStateCallback(this, _logger);
-        if (OperatingSystem.IsAndroidVersionAtLeast(28))
+        try
         {
-            SessionConfiguration config = new((int)SessionType.Regular, surfaces, executorService, sessionCallback);
-            cameraDevice?.CreateCaptureSession(config);
-        }
-        else
-        {
+            if (OperatingSystem.IsAndroidVersionAtLeast(28))
+            {
+                SessionConfiguration config = new((int)SessionType.Regular, surfaces, executorService, sessionCallback);
+                cameraDevice?.CreateCaptureSession(config);
+            }
+            else
+            {
 #pragma warning disable CS0618 // El tipo o el miembro están obsoletos
-            cameraDevice.CreateCaptureSession(surfaces26, sessionCallback, null);
+                cameraDevice.CreateCaptureSession(surfaces26, sessionCallback, null);
 #pragma warning restore CS0618 // El tipo o el miembro están obsoletos
+            }
+        }
+        catch (Exception ex)
+        { //HO Happens sometimes when going back from preview when user has not saved and discard video is done
+            // Should be investigated further
+            _logger_LogTrace?.Invoke($"cameraDevice?.CreateCaptureSession FAILED: {ex.Message}");
         }
         _logger_LogTrace?.Invoke("_previewStartedTcs?.TrySetResult()");
         lock(_previewStartedTcsLock)
