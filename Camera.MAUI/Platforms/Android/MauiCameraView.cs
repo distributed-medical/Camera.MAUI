@@ -970,8 +970,8 @@ internal class MauiCameraView: GridLayout
     {
         lock(cameraDeviceLock)
         { //HO lock cause sometimes get Android.Hardware.Camera2.CameraAccessException: 'CAMERA_DISCONNECTED (2): checkPidStatus:2384: The camera device has been disconnected'
-            _logger_LogTrace("SetZoomFactor BEGIN");
-            if (previewSession != null && previewBuilder != null && cameraView.Camera != null)
+            _logger_LogTrace?.Invoke("SetZoomFactor BEGIN");
+            if (previewSession != null && previewBuilder != null && cameraView?.Camera != null)
             {
                 var destZoom = Math.Clamp(cameraView.ZoomFactor, 1, cameraView.Camera.MaxZoomFactor);
                 if (OperatingSystem.IsAndroidVersionAtLeast(_useControlZoomRatio_ApiLevel))
@@ -987,7 +987,7 @@ internal class MauiCameraView: GridLayout
 
                 previewSession.SetRepeatingRequest(previewBuilder.Build(), null, null);
             }
-            _logger_LogTrace("SetZoomFactor END");
+            _logger_LogTrace?.Invoke("SetZoomFactor END");
         }
     }
     internal void ForceAutoFocus()
