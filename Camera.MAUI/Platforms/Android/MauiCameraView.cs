@@ -59,10 +59,17 @@ internal class MauiCameraView: GridLayout
     const int _useControlZoomRatio_ApiLevel = 30;
     //const int _useControlZoomRatio_ApiLevel = 100;
     readonly ILogger _logger;
+    Action<string> _logger_LogTrace = null;
 
     public MauiCameraView(Context context, CameraView cameraView) : base(context)
     {
         _logger = IPlatformApplication.Current.Services.GetService<ILogger<MauiCameraView>>();
+        if(_logger.IsEnabled(LogLevel.Trace))
+        {
+            _logger_LogTrace = (str) => _logger.LogTrace(str);
+        }
+
+
         this.context = context;
         this.cameraView = cameraView;
 
@@ -264,10 +271,7 @@ internal class MauiCameraView: GridLayout
     
     private void StartPreview()
     {
-        if (_logger.IsEnabled(LogLevel.Trace))
-        {
-            _logger.LogTrace($"{nameof(StartPreview)}: entered");
-        }
+        _logger_LogTrace?.Invoke($"{nameof(StartPreview)}: entered");
 
         while (textureView.SurfaceTexture == null || !textureView.IsAvailable) Thread.Sleep(100);
         SurfaceTexture texture = textureView.SurfaceTexture;
@@ -297,20 +301,25 @@ internal class MauiCameraView: GridLayout
             previewBuilder.AddTarget(mediaRecorder.Surface);
         }
         //HO added;
-        if(recording && cameraView.TorchEnabled)
+        if(recording && ((cameraView?.TorchEnabled)  ?? false))
         {
-            if(_logger.IsEnabled(LogLevel.Trace)) {
-                _logger.LogTrace($"{nameof(StartPreview)}: {nameof(cameraView.TorchEnabled)}: Turning it on");
+            _logger_LogTrace?.Invoke($"{nameof(StartPreview)}: {nameof(cameraView.TorchEnabled)}: Turning it on");
+            try
+            {
+                previewBuilder.Set(CaptureRequest.ControlAeMode, (int)ControlAEMode.On);
+                previewBuilder.Set(CaptureRequest.FlashMode, cameraView.TorchEnabled ? (int)ControlAEMode.OnAutoFlash : (int)ControlAEMode.Off);
             }
-            previewBuilder.Set(CaptureRequest.ControlAeMode, (int)ControlAEMode.On);
-            previewBuilder.Set(CaptureRequest.FlashMode, cameraView.TorchEnabled ? (int)ControlAEMode.OnAutoFlash : (int)ControlAEMode.Off);
+            catch (Exception ex)
+            { //HO happens sometimes investigate why later
+                _logger.LogWarning(ex, "calling UpdateTorch from StartCameraAsync failed");
+            }
         }
 
-        sessionCallback = new PreviewCaptureStateCallback(this);
+        sessionCallback = new PreviewCaptureStateCallback(this, _logger);
         if (OperatingSystem.IsAndroidVersionAtLeast(28))
         {
             SessionConfiguration config = new((int)SessionType.Regular, surfaces, executorService, sessionCallback);
-            cameraDevice.CreateCaptureSession(config);
+            cameraDevice?.CreateCaptureSession(config);
         }
         else
         {
@@ -318,7 +327,7 @@ internal class MauiCameraView: GridLayout
             cameraDevice.CreateCaptureSession(surfaces26, sessionCallback, null);
 #pragma warning restore CS0618 // El tipo o el miembro están obsoletos
         }
-        _logger.LogTrace("_previewStartedTcs?.TrySetResult()");
+        _logger_LogTrace?.Invoke("_previewStartedTcs?.TrySetResult()");
         lock(_previewStartedTcsLock)
         {
             _previewStartedTcs?.TrySetResult();
@@ -343,15 +352,19 @@ internal class MauiCameraView: GridLayout
                 if (recording)
                     mediaRecorder?.Start();
             }
-            catch (CameraAccessException e)
+            catch (Exception ex)
             {
-                e.PrintStackTrace();
+                _logger.LogWarning(ex, $"{nameof(UpdatePreview)}: exception");
             }
         }
     }
 
     object _previewStartedTcsLock = new object();
     TaskCompletionSource _previewStartedTcs = null;
+    public TaskCompletionSource _onConfiguredTcs = null;
+
+
+    Size _cameraViewSizeInPixels = new Size(0, 0);
 
     internal async Task<CameraResult> StartCameraAsync(Microsoft.Maui.Graphics.Size PhotosResolution, int maxPhotoResolution)
     {
@@ -363,6 +376,9 @@ internal class MauiCameraView: GridLayout
                 if (started) StopCamera();
                 if (cameraView.Camera != null)
                 {
+                    //HO we only calculate this once it will always be same
+                    //HO Reason is CalculateCameraViewSizeInPixels sometimes fail when repeatingly rec - keeep - rec - keep -rec
+                    _cameraViewSizeInPixels = (_cameraViewSizeInPixels.Width == 0) ? CalculateCameraViewSizeInPixels() : _cameraViewSizeInPixels;
                     try
                     {
                         camChars = cameraManager.GetCameraCharacteristics(cameraView.Camera.DeviceId);
@@ -383,7 +399,7 @@ internal class MauiCameraView: GridLayout
                         Rect sensorRect = (Rect)camChars.Get(CameraCharacteristics.SensorInfoActiveArraySize);
                         if(_logger.IsEnabled(LogLevel.Trace))
                         {
-                            _logger.LogTrace($"{nameof(StartCameraAsync)}: {nameof(sensorRect)}: w: {sensorRect.Width()} h: {sensorRect.Height()}");
+                            _logger_LogTrace?.Invoke($"{nameof(StartCameraAsync)}: {nameof(sensorRect)}: w: {sensorRect.Width()} h: {sensorRect.Height()}");
                         }
                         if (PhotosResolution.Width != 0 && PhotosResolution.Height != 0)
                         {
@@ -441,6 +457,7 @@ internal class MauiCameraView: GridLayout
                         lock (_previewStartedTcsLock)
                         {
                             _previewStartedTcs = new();
+                            _onConfiguredTcs = new();
                         }
 
                         if (OperatingSystem.IsAndroidVersionAtLeast(28))
@@ -448,9 +465,10 @@ internal class MauiCameraView: GridLayout
                         else
                             cameraManager.OpenCamera(cameraView.Camera.DeviceId, stateListener, null);
 
-                        _logger.LogTrace("PRE: await _previewStartedTcs.Task");
-                        await _previewStartedTcs.Task;
-                        _logger.LogTrace("POST: await _previewStartedTcs.Task");
+                        _logger_LogTrace?.Invoke("PRE: await _previewStartedTcs.Task");
+                        //HO OnConfigured is called sometime after camera is started this means we have a preview session and can call UpdateTorch
+                        await Task.WhenAny(Task.Delay(2000), Task.WhenAll(_onConfiguredTcs.Task, _previewStartedTcs.Task));
+                        _logger_LogTrace?.Invoke("POST: await _previewStartedTcs.Task");
 
                         timer.Start();
 
@@ -507,9 +525,11 @@ internal class MauiCameraView: GridLayout
 
     internal CameraResult StopCamera()
     {
+        _logger_LogTrace?.Invoke("StopCamera: before");
         CameraResult result = CameraResult.Success;
         lock(cameraDeviceLock)
         {
+            _logger_LogTrace?.Invoke("StopCamera: before: after cameraDeviceLock");
             if (initiated)
             {
                 timer.Stop();
@@ -517,6 +537,7 @@ internal class MauiCameraView: GridLayout
                 {
                     mediaRecorder?.Stop();
                     mediaRecorder?.Dispose();
+                    mediaRecorder = null;
                 } catch { }
                 try
                 {
@@ -533,6 +554,7 @@ internal class MauiCameraView: GridLayout
                     previewSession?.StopRepeating();
                     previewSession?.AbortCaptures();
                     previewSession?.Dispose();
+                    previewSession = null;
                 } catch { }
                 try
                 {
@@ -548,6 +570,8 @@ internal class MauiCameraView: GridLayout
             }
             else
                 result = CameraResult.NotInitiated;
+            _logger_LogTrace?.Invoke($"StopCamera: after");
+
             return result;
         }
     }
@@ -754,10 +778,7 @@ internal class MauiCameraView: GridLayout
                 if (capturePhoto != null)
                 {
 
-                    if (_logger.IsEnabled(LogLevel.Trace))
-                    {
-                        _logger.LogTrace($"{nameof(TakePhotoAsync)}: 20: TextureView: {textureView.ToString()} ScaleX:{textureView.ScaleX} ScaleY: {textureView.ScaleY}");
-                    }
+                    _logger_LogTrace?.Invoke($"{nameof(TakePhotoAsync)}: 20: TextureView: {textureView.ToString()} ScaleX:{textureView.ScaleX} ScaleY: {textureView.ScaleY}");
                     if (textureView.ScaleX == -1 || imageFormat != ImageFormat.JPEG)
                     {
                         Bitmap bitmap = BitmapFactory.DecodeByteArray(capturePhoto, 0, capturePhoto.Length);
@@ -901,13 +922,12 @@ internal class MauiCameraView: GridLayout
     }
     internal void UpdateTorch()
     {
-        if (cameraView.Camera != null && cameraView.Camera.HasFlashUnit)
+        if (cameraView?.Camera?.HasFlashUnit ?? false)
         {
-            if (_logger.IsEnabled(LogLevel.Trace)) {
-                _logger.LogTrace($"{nameof(UpdateTorch)}: {nameof(cameraView.TorchEnabled)}: Turning it on");
-            }
+            _logger_LogTrace?.Invoke($"{nameof(UpdateTorch)}: {nameof(cameraView.TorchEnabled)}: Turning it {cameraView.TorchEnabled}");
             if (started)
             {
+                _logger_LogTrace?.Invoke($"{nameof(UpdateTorch)}: {nameof(previewBuilder)}: {(previewBuilder != null)}  {nameof(previewSession)}: {(previewSession != null)} ");
                 previewBuilder.Set(CaptureRequest.ControlAeMode, (int)ControlAEMode.On);
                 previewBuilder.Set(CaptureRequest.FlashMode, cameraView.TorchEnabled ? (int)ControlAEMode.OnAutoFlash : (int)ControlAEMode.Off);
                 previewSession.SetRepeatingRequest(previewBuilder.Build(), null, null);
@@ -948,21 +968,26 @@ internal class MauiCameraView: GridLayout
     }
     internal void SetZoomFactor(float zoom)
     {
-        if (previewSession != null && previewBuilder != null && cameraView.Camera != null)
-        {
-            var destZoom = Math.Clamp(cameraView.ZoomFactor, 1, cameraView.Camera.MaxZoomFactor);
-            if (OperatingSystem.IsAndroidVersionAtLeast(_useControlZoomRatio_ApiLevel))
+        lock(cameraDeviceLock)
+        { //HO lock cause sometimes get Android.Hardware.Camera2.CameraAccessException: 'CAMERA_DISCONNECTED (2): checkPidStatus:2384: The camera device has been disconnected'
+            _logger_LogTrace("SetZoomFactor BEGIN");
+            if (previewSession != null && previewBuilder != null && cameraView.Camera != null)
             {
-                previewBuilder.Set(CaptureRequest.ControlZoomRatio, destZoom);
-            }
-            else
-            {
-                Rect sensorRect = (Rect)camChars.Get(CameraCharacteristics.SensorInfoActiveArraySize);
-                Rect zoomedSensorArea = CalculateScalerRect(sensorRect, destZoom);
-                previewBuilder.Set(CaptureRequest.ScalerCropRegion, zoomedSensorArea);
-            }
+                var destZoom = Math.Clamp(cameraView.ZoomFactor, 1, cameraView.Camera.MaxZoomFactor);
+                if (OperatingSystem.IsAndroidVersionAtLeast(_useControlZoomRatio_ApiLevel))
+                {
+                    previewBuilder.Set(CaptureRequest.ControlZoomRatio, destZoom);
+                }
+                else
+                {
+                    Rect sensorRect = (Rect)camChars.Get(CameraCharacteristics.SensorInfoActiveArraySize);
+                    Rect zoomedSensorArea = CalculateScalerRect(sensorRect, destZoom);
+                    previewBuilder.Set(CaptureRequest.ScalerCropRegion, zoomedSensorArea);
+                }
 
-            previewSession.SetRepeatingRequest(previewBuilder.Build(), null, null);
+                previewSession.SetRepeatingRequest(previewBuilder.Build(), null, null);
+            }
+            _logger_LogTrace("SetZoomFactor END");
         }
     }
     internal void ForceAutoFocus()
@@ -995,10 +1020,17 @@ internal class MauiCameraView: GridLayout
         return result;
     }
 
-    Size GetCameraViewSizeInPixels()
+    Size CalculateCameraViewSizeInPixels()
     {
         var cameraViewWidthInPixels = (int)Math.Round(cameraView.Width * DeviceDisplay.Current.MainDisplayInfo.Density);
         var cameraViewHeightInPixels = (int)Math.Round(cameraView.Height * DeviceDisplay.Current.MainDisplayInfo.Density);
+
+        if (cameraView.Width > cameraView.Height)
+        {
+            cameraViewWidthInPixels = (int)Math.Round(cameraView.Height * DeviceDisplay.Current.MainDisplayInfo.Density);
+            cameraViewHeightInPixels = (int)Math.Round(cameraView.Width * DeviceDisplay.Current.MainDisplayInfo.Density);
+        }
+
         return new Size(cameraViewWidthInPixels, cameraViewHeightInPixels);
     }
 
@@ -1013,15 +1045,14 @@ internal class MauiCameraView: GridLayout
         Size result = choices[0];
 
 
-        var cameraViewSizeInPixels = GetCameraViewSizeInPixels();
 
-        var cameraViewSizeInPixels_Width = cameraViewSizeInPixels.Width;
-        var cameraViewSizeInPixels_Height = cameraViewSizeInPixels.Height;
+        var cameraViewSizeInPixels_Width = _cameraViewSizeInPixels.Width;
+        var cameraViewSizeInPixels_Height = _cameraViewSizeInPixels.Height;
 
         if (swapped)
         {
-            cameraViewSizeInPixels_Width = cameraViewSizeInPixels.Height;
-            cameraViewSizeInPixels_Height = cameraViewSizeInPixels.Width;
+            cameraViewSizeInPixels_Width = _cameraViewSizeInPixels.Height;
+            cameraViewSizeInPixels_Height = _cameraViewSizeInPixels.Width;
         }
 
         bool hasFoundBestSensorResolution = false;
@@ -1041,9 +1072,7 @@ internal class MauiCameraView: GridLayout
             }
         }
 
-        {
-            _logger.LogTrace($"{nameof(ChooseVideoSize)}: selected: w:{result?.Width} h:{result?.Height}");
-        }
+        _logger_LogTrace?.Invoke($"{nameof(ChooseVideoSize)}: selected: w:{result?.Width} h:{result?.Height}");
         return result;
     }
 
@@ -1073,9 +1102,8 @@ internal class MauiCameraView: GridLayout
         bool isSwapped = IsDimensionSwapped();
 
 
-        var cameraViewSizeInPixels = GetCameraViewSizeInPixels();
 
-        RectF viewRect = new(0, 0, (float)cameraViewSizeInPixels.Width, (float)cameraViewSizeInPixels.Height);
+        RectF viewRect = new(0, 0, (float)_cameraViewSizeInPixels.Width, (float)_cameraViewSizeInPixels.Height);
         float centerX = viewRect.CenterX();
         float centerY = viewRect.CenterY();
 
@@ -1091,18 +1119,19 @@ internal class MauiCameraView: GridLayout
         if (cameraView.AspectFitPreview)
         {
             scale = Math.Min(
-                    (float)cameraViewSizeInPixels.Height / (isSwapped ? videoWidth : videoHeight),
-                    (float)cameraViewSizeInPixels.Width / (isSwapped ? videoHeight : videoWidth));
+                    (float)_cameraViewSizeInPixels.Height / (isSwapped ? videoWidth : videoHeight),
+                    (float)_cameraViewSizeInPixels.Width / (isSwapped ? videoHeight : videoWidth));
         }
         else
         {
             scale = Math.Max(
-                    (float)cameraViewSizeInPixels.Height / (isSwapped ? videoWidth :  videoHeight),
-                    (float)cameraViewSizeInPixels.Width / (isSwapped ? videoHeight : videoWidth));
+                    (float)_cameraViewSizeInPixels.Height / (isSwapped ? videoWidth :  videoHeight),
+                    (float)_cameraViewSizeInPixels.Width / (isSwapped ? videoHeight : videoWidth));
         }
         txform.PostScale(scale, scale, centerX, centerY);
 
         //txform.PostScale(scaleX, scaleY, centerX, centerY);
+        /*HO this is not needed we are always showing in portrait mode
         IWindowManager windowManager = context.GetSystemService(Context.WindowService).JavaCast<IWindowManager>();
         var rotation = windowManager.DefaultDisplay.Rotation;
         if (SurfaceOrientation.Rotation90 == rotation || SurfaceOrientation.Rotation270 == rotation)
@@ -1113,6 +1142,7 @@ internal class MauiCameraView: GridLayout
         {
             txform.PostRotate(180, centerX, centerY);
         }
+        */
         textureView.SetTransform(txform);
     }
 
@@ -1209,15 +1239,39 @@ internal class MauiCameraView: GridLayout
     private class PreviewCaptureStateCallback : CameraCaptureSession.StateCallback
     {
         private readonly MauiCameraView cameraView;
-        public PreviewCaptureStateCallback(MauiCameraView camView)
+        ILogger _logger;
+        public PreviewCaptureStateCallback(MauiCameraView camView, ILogger logger)
         {
             cameraView = camView;
+            _logger = logger;
         }
         public override void OnConfigured(CameraCaptureSession session)
         {
-            cameraView.previewSession = session;
-            cameraView.UpdatePreview();
-
+            lock(cameraView.cameraDeviceLock)
+            { 
+                if (_logger.IsEnabled(LogLevel.Trace))
+                {
+                    _logger.LogTrace($"OnConfigured: begin");
+                }
+                cameraView.previewSession = session;
+                cameraView.UpdatePreview();
+                if (_logger.IsEnabled(LogLevel.Trace))
+                {
+                    _logger.LogTrace("cameraView._onConfiguredTcs.TrySetResult(); PRE");
+                }
+                cameraView._onConfiguredTcs?.TrySetResult();
+                if (_logger.IsEnabled(LogLevel.Trace))
+                {
+                    _logger.LogTrace("cameraView._onConfiguredTcs.TrySetResult(); POST");
+                }
+                if (_logger.IsEnabled(LogLevel.Trace))
+                {
+                }
+                if (_logger.IsEnabled(LogLevel.Trace))
+                {
+                    _logger.LogTrace($"OnConfigured: end");
+                }
+            }
         }
         public override void OnConfigureFailed(CameraCaptureSession session)
         {
