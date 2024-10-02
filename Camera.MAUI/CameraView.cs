@@ -316,7 +316,6 @@ public class CameraView : View, ICameraView
     private readonly BarcodeReaderGeneric BarcodeReader;
     internal DateTime lastSnapshot = DateTime.Now;
     internal Size PhotosResolution = new(0, 0);
-    internal int MaxPhotoResolution = int.MaxValue;
 
     public static ILogger _logger;
 
@@ -464,13 +463,12 @@ public class CameraView : View, ICameraView
     /// Start playback of the selected camera async. "Camera" property must not be null.
     /// <paramref name="Resolution"/> Indicates the resolution for the preview and photos taken with TakePhotoAsync (must be in Camera.AvailableResolutions). If width or height is 0, max resolution will be taken.
     /// </summary>
-    public async Task<CameraResult> StartCameraAsync(Size Resolution = default, int maxPhotoResolution = int.MaxValue)
+    public async Task<CameraResult> StartCameraAsync(Size Resolution = default)
     {
         CameraResult result = CameraResult.AccessError;
         if (Camera != null)
         {
             PhotosResolution = Resolution;
-            MaxPhotoResolution = maxPhotoResolution;
             if (Resolution.Width != 0 && Resolution.Height != 0)
             {
                 if (!Camera.AvailableResolutions.Any(r => r.Width == Resolution.Width && r.Height == Resolution.Height))
@@ -478,7 +476,7 @@ public class CameraView : View, ICameraView
             }
             if (Handler != null && Handler is CameraViewHandler handler)
             {
-                result = await handler.StartCameraAsync(Resolution, maxPhotoResolution);
+                result = await handler.StartCameraAsync(Resolution);
                 if (result == CameraResult.Success)
                 {
                     BarCodeResults = null;

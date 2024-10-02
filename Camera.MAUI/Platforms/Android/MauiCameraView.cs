@@ -76,7 +76,7 @@ internal class MauiCameraView: GridLayout
         textureView = new(context);
         timer = new(33.3);
         timer.Elapsed += Timer_Elapsed;
-        stateListener = new MyCameraStateCallback(this, _logger);
+        stateListener = new MyCameraStateCallback(this, _logger, _logger_LogTrace);
         photoListener = new ImageAvailableListener(this);
         AddView(textureView);
         ORIENTATIONS.Append((int)SurfaceOrientation.Rotation0, 90);
@@ -315,7 +315,7 @@ internal class MauiCameraView: GridLayout
             }
         }
 
-        sessionCallback = new PreviewCaptureStateCallback(this, _logger);
+        sessionCallback = new PreviewCaptureStateCallback(this, _logger, _logger_LogTrace);
         try
         {
             if (OperatingSystem.IsAndroidVersionAtLeast(28))
@@ -374,7 +374,7 @@ internal class MauiCameraView: GridLayout
 
     Size _cameraViewSizeInPixels = new Size(0, 0);
 
-    internal async Task<CameraResult> StartCameraAsync(Microsoft.Maui.Graphics.Size PhotosResolution, int maxPhotoResolution)
+    internal async Task<CameraResult> StartCameraAsync(Microsoft.Maui.Graphics.Size PhotosResolution)
     {
         var result = CameraResult.Success;
         if (initiated)
@@ -417,37 +417,6 @@ internal class MauiCameraView: GridLayout
                         {   //HO changed to include non bursting sizes, otherwise  Samsung A34 gives images of size maxVideo ( which is less resolution)
                             var jpegSizes = GetAvailableJpegSizes(map);
                             imgReaderSize = jpegSizes.Last();
-                            if (maxPhotoResolution < int.MaxValue)
-                            {
-                                //choose the first resolution that is less than maxResolution and has (about) same aspect as the last
-                                var aspect = ((float)imgReaderSize.Width) / imgReaderSize.Height;
-                                var minAspect = aspect - aspect / 10;
-                                var maxAspect = aspect + aspect / 10;
-                                {
-                                    imgReaderSize = jpegSizes
-                                        .LastOrDefault(x => ((float)x.Width) / x.Height >= minAspect && ((float)x.Width) / x.Height <= maxAspect && (x.Width * x.Height) < maxPhotoResolution);
-                                }
-                                /*
-                                if (imgReaderSize == null)
-                                { //none is small enough among jpeg, so lets try imageReader ones
-                                    var imageReaderSizes = map.GetOutputSizes(Class.FromType(typeof(ImageReader))).OrderBy(x => x.Width * x.Height).ToArray();
-
-                                    imgReaderSize = imageReaderSizes
-                                        .LastOrDefault(x => ((float)x.Width) / x.Height >= minAspect && ((float)x.Width) / x.Height <= maxAspect && (x.Width * x.Height) < maxPhotoResolution);
-                                }
-                                */
-                                if (imgReaderSize == null)
-                                { //none is small enough, so lets take the first that matches aspect of camera sensor
-                                    var outputSizes = map.GetOutputSizes(Class.FromType(typeof(ImageReader)));
-                                    imgReaderSize = jpegSizes
-                                    .FirstOrDefault(x => ((float)x.Width) / x.Height >= minAspect && ((float)x.Width) / x.Height <= maxAspect);
-                                }
-                                
-                                if (imgReaderSize == null)
-                                { //none is small enough so take the first
-                                    imgReaderSize = jpegSizes.First();
-                                }
-                            }
                         }
 
 
@@ -475,7 +444,7 @@ internal class MauiCameraView: GridLayout
 
                         _logger_LogTrace?.Invoke("PRE: await _previewStartedTcs.Task");
                         //HO OnConfigured is called sometime after camera is started this means we have a preview session and can call UpdateTorch
-                        await Task.WhenAny(Task.Delay(2000), Task.WhenAll(_onConfiguredTcs.Task, _previewStartedTcs.Task));
+                        await Task.WhenAny(Task.Delay(2000), Task.WhenAll(_onConfiguredTcs?.Task, _previewStartedTcs?.Task));
                         _logger_LogTrace?.Invoke("POST: await _previewStartedTcs.Task");
 
                         timer.Start();
@@ -528,7 +497,7 @@ internal class MauiCameraView: GridLayout
     internal Task<CameraResult> StopRecordingAsync()
     {
         recording = false;
-        return StartCameraAsync(cameraView.PhotosResolution, cameraView.MaxPhotoResolution);
+        return StartCameraAsync(cameraView.PhotosResolution);
     }
 
     internal CameraResult StopCamera()
@@ -885,13 +854,6 @@ internal class MauiCameraView: GridLayout
                     matrix.PostRotate(360 - rotation.Value, bitmap.Width / 2, bitmap.Height / 2);
                 }
 
-                var resolution = (float)(bitmap.Width * bitmap.Height);
-                if (resolution > cameraView.MaxPhotoResolution)
-                {   //HO honor maxResolution
-                    matrix ??= new();
-                    float ratio = (float)Math.Sqrt((float)cameraView.MaxPhotoResolution / resolution);
-                    matrix.PostScale(ratio, ratio);
-                }
 
                 if(matrix != null)
                 {
@@ -1158,7 +1120,7 @@ internal class MauiCameraView: GridLayout
     {
         base.OnConfigurationChanged(newConfig);
         if (started && !recording)
-            await StartCameraAsync(cameraView.PhotosResolution, cameraView.MaxPhotoResolution);
+            await StartCameraAsync(cameraView.PhotosResolution);
     }
 
     private bool IsDimensionSwapped()
@@ -1214,16 +1176,17 @@ internal class MauiCameraView: GridLayout
     {
         private readonly MauiCameraView cameraView;
         private readonly ILogger _logger;
-        public MyCameraStateCallback(MauiCameraView camView, ILogger logger)
+        Action<string> _logger_LogTrace = null;
+
+        public MyCameraStateCallback(MauiCameraView camView, ILogger logger, Action<string>? logger_LogTrace)
         {
             cameraView = camView;
             _logger = logger;
+            _logger_LogTrace = logger_LogTrace;
         }
         public override void OnOpened(CameraDevice camera)
         {
-            if (_logger.IsEnabled(LogLevel.Trace)) {
-                _logger.LogTrace($"{nameof(MyCameraStateCallback)}: {nameof(OnOpened)}: entered");
-            }  
+            _logger_LogTrace?.Invoke($"{nameof(MyCameraStateCallback)}: {nameof(OnOpened)}: entered");
             if (camera != null)
             {
                 cameraView.cameraDevice = camera;
@@ -1248,37 +1211,25 @@ internal class MauiCameraView: GridLayout
     {
         private readonly MauiCameraView cameraView;
         ILogger _logger;
-        public PreviewCaptureStateCallback(MauiCameraView camView, ILogger logger)
+        Action<string> _logger_LogTrace = null;
+
+        public PreviewCaptureStateCallback(MauiCameraView camView, ILogger logger, Action<string> logger_LogTrace)
         {
             cameraView = camView;
             _logger = logger;
+            _logger_LogTrace = logger_LogTrace;
         }
         public override void OnConfigured(CameraCaptureSession session)
         {
             lock(cameraView.cameraDeviceLock)
             { 
-                if (_logger.IsEnabled(LogLevel.Trace))
-                {
-                    _logger.LogTrace($"OnConfigured: begin");
-                }
+                _logger_LogTrace?.Invoke($"OnConfigured: begin");
                 cameraView.previewSession = session;
                 cameraView.UpdatePreview();
-                if (_logger.IsEnabled(LogLevel.Trace))
-                {
-                    _logger.LogTrace("cameraView._onConfiguredTcs.TrySetResult(); PRE");
-                }
+                _logger_LogTrace?.Invoke("cameraView._onConfiguredTcs.TrySetResult(); PRE");
                 cameraView._onConfiguredTcs?.TrySetResult();
-                if (_logger.IsEnabled(LogLevel.Trace))
-                {
-                    _logger.LogTrace("cameraView._onConfiguredTcs.TrySetResult(); POST");
-                }
-                if (_logger.IsEnabled(LogLevel.Trace))
-                {
-                }
-                if (_logger.IsEnabled(LogLevel.Trace))
-                {
-                    _logger.LogTrace($"OnConfigured: end");
-                }
+                _logger_LogTrace?.Invoke("cameraView._onConfiguredTcs.TrySetResult(); POST");
+                _logger_LogTrace?.Invoke($"OnConfigured: end");
             }
         }
         public override void OnConfigureFailed(CameraCaptureSession session)

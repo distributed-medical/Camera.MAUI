@@ -66,12 +66,12 @@ internal partial class CameraViewHandler : ViewHandler<CameraView, PlatformView>
 #endif
     }
 
-    public Task<CameraResult> StartCameraAsync(Size PhotosResolution, int maxPhotoResolution)
+    public Task<CameraResult> StartCameraAsync(Size PhotosResolution)
     {
         if (PlatformView != null)
         {
 #if WINDOWS || ANDROID || IOS || MACCATALYST
-            return PlatformView.StartCameraAsync(PhotosResolution, maxPhotoResolution);
+            return PlatformView.StartCameraAsync(PhotosResolution);
 #endif
         }
         return Task.Run(() => { return CameraResult.AccessError; });

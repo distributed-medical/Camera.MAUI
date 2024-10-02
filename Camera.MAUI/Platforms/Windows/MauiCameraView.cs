@@ -30,7 +30,6 @@ public sealed partial class MauiCameraView : UserControl, IDisposable
     private readonly CameraView cameraView;
     public MauiCameraView(CameraView cameraView)
     {
-
         this.cameraView = cameraView;
         mediaElement = new MediaPlayerElement
         {
@@ -243,11 +242,10 @@ public sealed partial class MauiCameraView : UserControl, IDisposable
     }
     internal async Task<CameraResult> StopRecordingAsync()
     {
-        return await StartCameraAsync(cameraView.PhotosResolution, cameraView.MaxPhotoResolution);
+        return await StartCameraAsync(cameraView.PhotosResolution);
     }
-    internal async Task<CameraResult> StartCameraAsync(Size PhotosResolution, int maxPhotoResolution)
+    internal async Task<CameraResult> StartCameraAsync(Size PhotosResolution)
     {
-        _ = maxPhotoResolution;
         CameraResult result = CameraResult.Success;
 
         if (initiated)

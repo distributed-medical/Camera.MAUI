@@ -248,14 +248,12 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
     }
     public Task<CameraResult> StopRecordingAsync()
     {
-        return StartCameraAsync(cameraView.PhotosResolution, cameraView.MaxPhotoResolution);
+        return StartCameraAsync(cameraView.PhotosResolution);
     }
 
-    int _maxPhotoResolution = int.MaxValue;
 
-    public async Task<CameraResult> StartCameraAsync(Size PhotosResolution, int maxPhotoResolution)
+    public async Task<CameraResult> StartCameraAsync(Size PhotosResolution)
     {
-        _maxPhotoResolution = maxPhotoResolution;
         CameraResult result = CameraResult.Success;
         if (initiated)
         {
@@ -704,23 +702,6 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
 
         photo = new UIImage(imageData);
 
-        //HO Added
-        //HO scale directly does not work on ios so we cant use the shortcut "new UIImage(imageData, scale)";
-        var resolution = photo.Size.Width * photo.Size.Height;
-        if (resolution > _maxPhotoResolution)
-        {
-            var scale = Math.Sqrt(((double)_maxPhotoResolution) / resolution);
-            var prevFoto = photo;
-            photo = photo.Scale(new CGSize((int)Math.Max(1, scale * photo.Size.Width), (int)Math.Max(1, scale * photo.Size.Height)));
-            prevFoto.Dispose();
-
-            prevFoto = photo;
-            var rotatedCgImage = Rotate90Degrees(photo.CGImage);
-            prevFoto.Dispose();
-
-            photo = UIImage.FromImage(rotatedCgImage);
-            rotatedCgImage.Dispose();
-        }
         photoTaken = true;
     }
 
