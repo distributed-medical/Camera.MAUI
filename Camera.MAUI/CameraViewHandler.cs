@@ -158,4 +158,14 @@ internal partial class CameraViewHandler : ViewHandler<CameraView, PlatformView>
         PlatformView?.DisposeControl();
 #endif
     }
+
+    public bool SetFocus(Microsoft.Maui.Graphics.Rect rect)
+    {
+#if ANDROID || WINDOWS || IOS || MACCATALYST
+        return PlatformView?.SetFocus(rect) ?? false;
+#else
+        return false;
+#endif
+    }
+
 }

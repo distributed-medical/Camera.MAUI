@@ -609,4 +609,11 @@ public sealed partial class MauiCameraView : UserControl, IDisposable
     {
         StopCameraAsync().Wait();
     }
+
+    public bool SetFocus(Rect rect)
+    {
+        //HO TODO implement
+        return true;
+    }
+
 }

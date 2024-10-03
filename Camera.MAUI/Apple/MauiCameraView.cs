@@ -8,6 +8,7 @@ using CoreMedia;
 using CoreVideo;
 using Foundation;
 using MediaPlayer;
+using Microsoft.Extensions.Logging;
 using System.IO;
 using UIKit;
 using VideoToolbox;
@@ -41,8 +42,18 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
     private UIImage photo;
     private readonly NSObject orientationObserver;
 
+    readonly ILogger _logger;
+    readonly Action<string> _logger_LogTrace = null;
+
     public MauiCameraView(CameraView cameraView)
     {
+        _logger = IPlatformApplication.Current.Services.GetService<ILogger<MauiCameraView>>();
+        if (_logger.IsEnabled(LogLevel.Trace))
+        {
+            _logger_LogTrace = (str) => _logger.LogTrace(str);
+        }
+
+
         this.cameraView = cameraView;
 
         captureSession = new AVCaptureSession
@@ -973,6 +984,46 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
             retVal = false;
         }
         return retVal;
+    }
+
+    public bool SetFocus(Microsoft.Maui.Graphics.Rect rect)
+    {
+        bool retval = false;
+        if (cameraView.Camera != null && captureDevice != null && captureDevice.IsFocusModeSupported(AVCaptureFocusMode.AutoFocus))
+        {
+            captureDevice.LockForConfiguration(out NSError error);
+            if (error == null)
+            {
+                //HO 0.5 0.5 is what it is originally
+                var focusPointOfInterest = new CGPoint(0.5f, 0.5f);
+                if (rect != Rect.Zero)
+                {
+                    focusPointOfInterest = PreviewLayer.CaptureDevicePointOfInterestForPoint(new CGPoint(rect.Center.X, rect.Center.Y));
+                }
+                captureDevice.FocusPointOfInterest = focusPointOfInterest;
+                _logger_LogTrace($"Converting from view coordinates too sensor coordinates");
+                _logger_LogTrace($"CameraView Size: {new Microsoft.Maui.Graphics.Size(cameraView.Width, cameraView.Height)}");
+                _logger_LogTrace($"CameraView Focus Point: {rect.Center} Sensor Relative Focus Rect: {focusPointOfInterest}  ");
+
+                var continousAutoFocusSupported = captureDevice.IsFocusModeSupported(AVCaptureFocusMode.ContinuousAutoFocus);
+                _logger_LogTrace($"{nameof(continousAutoFocusSupported)}: {continousAutoFocusSupported}");
+
+                if (continousAutoFocusSupported)
+                {
+                    captureDevice.FocusMode = AVCaptureFocusMode.AutoFocus;
+                    captureDevice.FocusMode = AVCaptureFocusMode.ContinuousAutoFocus;
+                }
+                else
+                {
+                    captureDevice.FocusMode = AVCaptureFocusMode.ContinuousAutoFocus;
+                    captureDevice.FocusMode = AVCaptureFocusMode.AutoFocus;
+                }
+
+                captureDevice.UnlockForConfiguration();
+                retval = true;
+            }
+        }
+        return retval;
     }
 }
 

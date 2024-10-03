@@ -653,4 +653,14 @@ public class CameraView : View, ICameraView
         }
         return true;
     }
+
+    public bool SetFocus(Microsoft.Maui.Graphics.Rect rect)
+    {
+        if (Handler != null && Handler is CameraViewHandler handler)
+        {
+            return handler.SetFocus(rect);
+        }
+        return false;
+    }
+
 }
