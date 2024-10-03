@@ -609,4 +609,11 @@ public sealed partial class MauiCameraView : UserControl, IDisposable
     {
         StopCameraAsync().Wait();
     }
+
+    public Microsoft.Maui.Graphics.Rect SetFocus(Microsoft.Maui.Graphics.PointF relativeToViewPoint)
+    {
+        //HO TODO implement
+        return new Rect(0, 0, 1, 1);
+    }
+
 }

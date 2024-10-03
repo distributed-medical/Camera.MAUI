@@ -158,4 +158,13 @@ internal partial class CameraViewHandler : ViewHandler<CameraView, PlatformView>
         PlatformView?.DisposeControl();
 #endif
     }
+
+    public Microsoft.Maui.Graphics.Rect SetFocus(Microsoft.Maui.Graphics.PointF relativeToViewPoint)
+    {
+#if ANDROID || WINDOWS || IOS || MACCATALYST
+        return PlatformView?.SetFocus(relativeToViewPoint) ?? Rect.Zero;
+#endif
+        return Rect.Zero;
+    }
+
 }

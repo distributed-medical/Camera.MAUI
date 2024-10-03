@@ -8,6 +8,7 @@ using CoreMedia;
 using CoreVideo;
 using Foundation;
 using MediaPlayer;
+using Microsoft.Extensions.Logging;
 using System.IO;
 using UIKit;
 using VideoToolbox;
@@ -41,8 +42,18 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
     private UIImage photo;
     private readonly NSObject orientationObserver;
 
+    readonly ILogger _logger;
+    readonly Action<string> _logger_LogTrace = null;
+
     public MauiCameraView(CameraView cameraView)
     {
+        _logger = IPlatformApplication.Current.Services.GetService<ILogger<MauiCameraView>>();
+        if (_logger.IsEnabled(LogLevel.Trace))
+        {
+            _logger_LogTrace = (str) => _logger.LogTrace(str);
+        }
+
+
         this.cameraView = cameraView;
 
         captureSession = new AVCaptureSession
@@ -971,6 +982,56 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
         if (!done) {
             Debug("failed to locate any desired video codec");
             retVal = false;
+        }
+        return retVal;
+    }
+
+    public Microsoft.Maui.Graphics.Rect SetFocus(Microsoft.Maui.Graphics.PointF relativeToViewPoint)
+    {
+        //System.Diagnostics.Debugger.Break();
+        var retVal = Rect.Zero;
+        if (cameraView.Camera != null && captureDevice != null && captureDevice.IsFocusModeSupported(AVCaptureFocusMode.AutoFocus))
+        {
+            captureDevice.LockForConfiguration(out NSError error);
+            if (error == null)
+            {
+                if (relativeToViewPoint == PointF.Zero)
+                {
+                    //HO 0.5 0.5 is what it is originally
+                    captureDevice.FocusPointOfInterest = new CGPoint(0.5f, 0.5f);
+                    retVal = Rect.Zero;
+                }
+                else
+                {
+
+                    _logger.LogTrace($"{nameof(SetFocus)}: PRE: {captureDevice.FocusPointOfInterest.ToString()}");
+
+                    var focusPointOfInterestX = relativeToViewPoint.Y;
+                    var focusPointOfInterestY = 1 - relativeToViewPoint.X;
+
+                    captureDevice.FocusPointOfInterest = new CGPoint(focusPointOfInterestX, focusPointOfInterestY);
+
+
+                    var rectSide = cameraView.Height * 0.1d;
+
+                    retVal = new Rect((relativeToViewPoint.X * cameraView.Width - (rectSide / 2)) / cameraView.Width, (relativeToViewPoint.Y * cameraView.Height - (rectSide / 2)) / cameraView.Height, rectSide / cameraView.Width, rectSide / cameraView.Height);
+                    _logger.LogTrace($"{nameof(SetFocus)}: POST: {captureDevice.FocusPointOfInterest.ToString()}");
+                }
+
+                if (captureDevice.IsFocusModeSupported(AVCaptureFocusMode.ContinuousAutoFocus))
+                {
+                    captureDevice.FocusMode = AVCaptureFocusMode.AutoFocus;
+                    captureDevice.FocusMode = AVCaptureFocusMode.ContinuousAutoFocus;
+
+                }
+                else
+                {
+                    captureDevice.FocusMode = AVCaptureFocusMode.AutoFocus;
+                    captureDevice.FocusMode = AVCaptureFocusMode.ContinuousAutoFocus;
+                }
+
+                captureDevice.UnlockForConfiguration();
+            }
         }
         return retVal;
     }

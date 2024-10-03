@@ -1,8 +1,12 @@
-﻿using Android.Content;
+﻿#define TAP_TO_FOCUS_CONTINIOUS
+
+using Android.Content;
 using Android.Widget;
 using Java.Util.Concurrent;
 using Android.Graphics;
 using CameraCharacteristics = Android.Hardware.Camera2.CameraCharacteristics;
+using Camera2 = Android.Hardware.Camera2;
+using Android_Hardware = Android.Hardware;
 using Android.Hardware.Camera2;
 using Android.Media;
 using Android.Views;
@@ -90,6 +94,9 @@ internal class MauiCameraView: GridLayout
         InitDevices();
     }
 
+
+
+
     private void InitDevices()
     {
         if (!initiated && cameraView != null)
@@ -97,6 +104,8 @@ internal class MauiCameraView: GridLayout
             cameraManager = (CameraManager)context.GetSystemService(Context.CameraService);
             audioManager = (AudioManager)context.GetSystemService(Context.AudioService);
             cameraView.Cameras.Clear();
+
+
             foreach (var id in cameraManager.GetCameraIdList())
             {
                 var cameraInfo = new CameraInfo { DeviceId = id, MinZoomFactor = 1f };
@@ -300,6 +309,7 @@ internal class MauiCameraView: GridLayout
             surfaces26.Add(mediaRecorder.Surface);
             previewBuilder.AddTarget(mediaRecorder.Surface);
         }
+
         //HO added;
         if(recording && ((cameraView?.TorchEnabled)  ?? false))
         {
@@ -314,6 +324,7 @@ internal class MauiCameraView: GridLayout
                 _logger.LogWarning(ex, "calling UpdateTorch from StartCameraAsync failed");
             }
         }
+
 
         sessionCallback = new PreviewCaptureStateCallback(this, _logger, _logger_LogTrace);
         try
@@ -426,6 +437,7 @@ internal class MauiCameraView: GridLayout
                         backgroundHandler = new Handler(backgroundThread.Looper);
                         imgReader.SetOnImageAvailableListener(photoListener, backgroundHandler);
 
+
                         //HO _previewStartedTcs: needed or we sometimes get exception cause StartCameraAsync is called when StopRecording is called 
                         //HO and after StopRecording app directly changes page to PhotoPreviewPage
                         //HO OpenCamera causes an async call to StartPreview via callback which can then not be performed as we have left the CameraPage 
@@ -467,9 +479,9 @@ internal class MauiCameraView: GridLayout
         }
         else
             result = CameraResult.NotInitiated;
-
         return result;
     }
+
 
     private Size[] GetAvailableJpegSizes(StreamConfigurationMap map)
     {
@@ -1178,7 +1190,7 @@ internal class MauiCameraView: GridLayout
         private readonly ILogger _logger;
         Action<string> _logger_LogTrace = null;
 
-        public MyCameraStateCallback(MauiCameraView camView, ILogger logger, Action<string>? logger_LogTrace)
+        public MyCameraStateCallback(MauiCameraView camView, ILogger logger, Action<string> logger_LogTrace)
         {
             cameraView = camView;
             _logger = logger;
@@ -1267,6 +1279,260 @@ internal class MauiCameraView: GridLayout
             }
             cameraView.captureDone = true;
         }
+    }
+
+
+    public class SetFocusContext
+    {
+        public CameraCharacteristics CameraCharacteristics { get; set; }
+        public Rect ActiveArraySize { get; set; }
+        public LensFacing CameraFacing { get; set; }
+        public int SensorOrientation { get; set; }
+        public int ControlMaxRegionsAf { get; set; }
+
+        public Java.Lang.Object OrgAfRegions { get; set; }
+    }
+
+    SetFocusContext _setFocusContext = new SetFocusContext();
+
+    public bool ManualFocusEngaged { get; set; }
+
+    class ManualFocusEngaged_CaptureCallback : CameraCaptureSession.CaptureCallback
+    {
+        readonly MauiCameraView _mauiCameraView;
+        readonly ILogger _logger;
+        readonly SetFocusContext _setFocusContext;
+
+        public ManualFocusEngaged_CaptureCallback(MauiCameraView mauiCameraView, ILogger logger, SetFocusContext setFocusContext)
+        {
+            _mauiCameraView = mauiCameraView;
+            _logger = logger;
+            _setFocusContext = setFocusContext;
+        }
+
+        public override void OnCaptureCompleted(CameraCaptureSession session, CaptureRequest request, TotalCaptureResult result)
+        {
+            try
+            {
+                base.OnCaptureCompleted(session, request, result);
+                _mauiCameraView.ManualFocusEngaged = false;
+
+                var requestTag = (string)request.Tag;
+                if (requestTag == "FOCUS_TAG")
+                {
+                    //the focus trigger is complete -
+                    //resume repeating (preview surface will get frames), clear AF trigger
+                    //In some devices(Sony xperia G8142 etc..),CaptureRequest.CONTROL_AF_TRIGGER can not be set to null,or the camera throws an error. but how to solve this, I have no idea..
+                    //I found that setting CONTROL_AF_TRIGGER to CONTROL_AF_TRIGGER_IDLE instead of null works on Xperia devices.
+
+
+                    //HO if this line is called the focus is goes back to autofocus
+                    //_mauiCameraView.previewBuilder.Set(CaptureRequest.ControlAfMode, (int)ControlAFMode.ContinuousPicture);// (int)ControlAFTrigger.Idle);// bControlAFMode.T CaptureRequest.CONTROL_AF_TRIGGER, null);
+
+                    //HO a test but didnt work for setting zoom to area continously which i wanted
+                    //_mauiCameraView.previewBuilder.Set(CaptureRequest.ControlAfTrigger, (int)ControlAFTrigger.Start);
+
+                    //HO test to change after this to continious
+                    //_mauiCameraView.previewBuilder.Set(CaptureRequest.ControlAfMode, (int)ControlAFMode.ContinuousPicture); //CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_AUTO);
+                    //_mauiCameraView.previewBuilder.Set(CaptureRequest.ControlAfTrigger, (int)ControlAFTrigger.Cancel); //CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_START);
+                    //_mauiCameraView.previewBuilder.Set(CaptureRequest.ControlAfRegions, _mauiCameraView.previewBuilder.Get(CaptureRequest.ControlAfRegions));
+                    //_mauiCameraView.previewSession.SetRepeatingRequest(_mauiCameraView.previewBuilder.Build(), null, null);
+
+
+                    _mauiCameraView.previewBuilder.Set(CaptureRequest.ControlAfTrigger, (int)ControlAFTrigger.Idle);
+
+                    // (int)ControlAFTrigger.Idle);// bControlAFMode.T CaptureRequest.CONTROL_AF_TRIGGER, null);
+                    _mauiCameraView.previewSession.SetRepeatingRequest(_mauiCameraView.previewBuilder.Build(), null, null);
+                }
+            }
+            catch (Exception ex)
+            { 
+                _logger.LogWarning($"{nameof(OnCaptureCompleted)}: failed: {ex.Message}");
+            }
+
+        }
+        public override void OnCaptureFailed(CameraCaptureSession session, CaptureRequest request, CaptureFailure failure)
+        {
+            try
+            {
+                base.OnCaptureFailed(session, request, failure);
+                var failureReason = (string)failure.Reason.ToString();
+                _logger.LogWarning($"{nameof(OnCaptureFailed)}: {failureReason}");
+                _mauiCameraView.ManualFocusEngaged = false;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning($"{nameof(OnCaptureFailed)}: failed: {ex.Message}");
+            }
+        }
+    }
+
+    const float TOUCH_AREA_MULTIPLIER = 0.1f;
+
+
+    Microsoft.Maui.Graphics.Rect RelativeToCameraViewPointToSensorTouchRect(SetFocusContext setFocusContext, Microsoft.Maui.Graphics.PointF relativeToViewPoint)
+    {
+        var activeArraySize = _setFocusContext.ActiveArraySize;
+
+        var faketCameraViewWidthInCameraViewUnits = (cameraView.Height / activeArraySize.Width()) * activeArraySize.Height();
+        var fakeXOffsetInCameraViewUnits = (faketCameraViewWidthInCameraViewUnits - cameraView.Width) / 2;
+
+        var fakeCameraViewX = (relativeToViewPoint.X * cameraView.Width) + fakeXOffsetInCameraViewUnits;
+        var fakeCameraViewY = relativeToViewPoint.Y * cameraView.Height;
+
+        //calculate focusrect if somebody wants it
+
+
+        //rotate
+        var sensorX = (fakeCameraViewY / cameraView.Height) * activeArraySize.Width();
+        var sensorY = (1d - (fakeCameraViewX / faketCameraViewWidthInCameraViewUnits)) * activeArraySize.Height();
+
+
+
+
+        // Create MeteringRectangle
+        //HO TODO should 
+        var sensorTouchAreaHeight = activeArraySize.Height() * TOUCH_AREA_MULTIPLIER;
+        var sensorTouchAreaWidth = sensorTouchAreaHeight;// activeArraySize.Width() * TOUCH_AREA_MULTIPLIER;
+
+
+
+        var rect = new Microsoft.Maui.Graphics.Rect(
+             (int)Math.Clamp(sensorX - (sensorTouchAreaWidth/2), 0, activeArraySize.Width() - sensorTouchAreaWidth),
+             (int)Math.Clamp(sensorY + (sensorTouchAreaHeight/2), 0, activeArraySize.Height() - sensorTouchAreaHeight),
+             (int)(sensorTouchAreaWidth),
+             (int)(sensorTouchAreaHeight)
+        );
+
+        return rect;
+    }
+
+    Microsoft.Maui.Graphics.Rect SensorTouchRectToRelativeCameraViewRect(SetFocusContext setFocusContext, Microsoft.Maui.Graphics.Rect sensorTouchRect)
+    {
+        var activeArraySize = _setFocusContext.ActiveArraySize;
+
+        var fakeCameraViewWidthInCameraViewUnits = (cameraView.Height / activeArraySize.Width()) * activeArraySize.Height();
+        var fakeCameraOffsetX = (fakeCameraViewWidthInCameraViewUnits - cameraView.Width )/ 2;
+
+
+        //rotate and scale
+        var viewTouchX = (fakeCameraViewWidthInCameraViewUnits * (1 - (sensorTouchRect.Y / activeArraySize.Height()))) - fakeCameraOffsetX;
+        var viewTouchY = sensorTouchRect.X/ activeArraySize.Width() * cameraView.Height;
+
+        //var viewTouchWidth = fakeCameraViewWidthInCameraViewUnits * TOUCH_AREA_MULTIPLIER;
+        //var viewTouchHeight = cameraView.Height * TOUCH_AREA_MULTIPLIER;
+
+        var viewTouchHeight = sensorTouchRect.Width / activeArraySize.Width() * cameraView.Height;
+        var viewTouchWidth = viewTouchHeight;
+
+
+        //make it unitless
+        var rect = new Microsoft.Maui.Graphics.Rect(
+             viewTouchX/cameraView.Width,
+             viewTouchY/cameraView.Height,
+             viewTouchWidth/cameraView.Width,
+             viewTouchHeight/cameraView.Height
+        );
+
+        return rect;
+
+    }
+
+
+    public Microsoft.Maui.Graphics.Rect SetFocus(Microsoft.Maui.Graphics.PointF relativeToViewPoint)// (Microsoft.Maui.Graphics.PointF pointRelativeToVisibleArea)
+    {
+        if(relativeToViewPoint == Microsoft.Maui.Graphics.PointF.Zero)
+        { //revert to autofocus
+            previewBuilder.Set(CaptureRequest.ControlAfRegions, _setFocusContext.OrgAfRegions);
+            previewBuilder.Set(CaptureRequest.ControlAfMode, (int)ControlAFMode.ContinuousPicture);// (int)ControlAFTrigger.Idle);// bControlAFMode.T CaptureRequest.CONTROL_AF_TRIGGER, null);
+            previewSession.SetRepeatingRequest(previewBuilder.Build(), null, null);
+            return Microsoft.Maui.Graphics.Rect.Zero;
+        }
+        // Get characteristics
+        if (_setFocusContext.CameraCharacteristics == null)
+        {
+            _setFocusContext.CameraCharacteristics = cameraManager.GetCameraCharacteristics(cameraDevice.Id);
+            _setFocusContext.ActiveArraySize = (Rect)_setFocusContext.CameraCharacteristics.Get(CameraCharacteristics.SensorInfoActiveArraySize);
+            _setFocusContext.CameraFacing = (LensFacing)(int)_setFocusContext.CameraCharacteristics.Get(CameraCharacteristics.LensFacing);
+            _setFocusContext.SensorOrientation = (int)_setFocusContext.CameraCharacteristics.Get(CameraCharacteristics.SensorOrientation);
+            _setFocusContext.ControlMaxRegionsAf = (int)_setFocusContext.CameraCharacteristics.Get(CameraCharacteristics.ControlMaxRegionsAf);
+            _setFocusContext.OrgAfRegions = previewBuilder.Get(CaptureRequest.ControlAfRegions);
+        }
+
+        if (_setFocusContext.ControlMaxRegionsAf == 0)
+        {
+            //no af regions allowed return
+            return Microsoft.Maui.Graphics.Rect.Zero;
+        }
+
+
+
+        //HO in this code we assume:
+        //   - cameraView.Height always matches sensor.Width
+        //   - sensor is rotated 90 degrees relative to phone up
+        //   - what we se is the middle of the sensor
+
+        var activeArraySize = _setFocusContext.ActiveArraySize;
+
+        var faketCameraViewWidthInCameraViewUnits = (cameraView.Height / activeArraySize.Width()) * activeArraySize.Height();
+        var fakeXOffsetInCameraViewUnits = (faketCameraViewWidthInCameraViewUnits - cameraView.Width) / 2;
+
+        var fakeCameraViewX = (relativeToViewPoint.X * cameraView.Width) + fakeXOffsetInCameraViewUnits;
+        var fakeCameraViewY = relativeToViewPoint.Y  * cameraView.Height;
+
+        //calculate focusrect if somebody wants it
+
+
+        //rotate
+        var sensorX = (fakeCameraViewY / cameraView.Height) * activeArraySize.Width();
+        var sensorY = activeArraySize.Height() - ((fakeCameraViewX / faketCameraViewWidthInCameraViewUnits) * activeArraySize.Height());
+
+
+
+
+        // Create MeteringRectangle
+        //HO TODO should 
+        var sensorTouchAreaWidth = activeArraySize.Width() * TOUCH_AREA_MULTIPLIER;
+        var sensorTouchAreaHeight = activeArraySize.Height() * TOUCH_AREA_MULTIPLIER;
+
+        var sensorAutoFocusRect = RelativeToCameraViewPointToSensorTouchRect(_setFocusContext, relativeToViewPoint);
+        var viewFocusRect = SensorTouchRectToRelativeCameraViewRect(_setFocusContext, sensorAutoFocusRect);
+
+        var focusAreaTouch = new MeteringRectangle(
+             (int)sensorAutoFocusRect.X,
+             (int)sensorAutoFocusRect.Y,
+             (int)sensorAutoFocusRect.Width,
+             (int)sensorAutoFocusRect.Height,
+             MeteringRectangle.MeteringWeightMax
+        );
+
+        //first stop the existing repeating request
+        previewSession.StopRepeating();
+
+        //cancel any existing AF trigger (repeated touches, etc.)
+        previewBuilder.Set(CaptureRequest.ControlAfTrigger, (int)ControlAFTrigger.Cancel);// CameraMetadata.Cance //CONTROL_AF_TRIGGER_CANCEL);
+        previewBuilder.Set(CaptureRequest.ControlAfMode, (int)ControlAFMode.Off);//CONTROL_AF_MODE_OFF);
+        var manualFocusEngagedCaptureCallback = new ManualFocusEngaged_CaptureCallback(this, _logger, _setFocusContext);
+        previewSession.Capture(previewBuilder.Build(), manualFocusEngagedCaptureCallback, null);
+
+#if TAP_TO_FOCUS_CONTINIOUS
+        previewBuilder.Set(CaptureRequest.ControlAfMode, (int)ControlAFMode.ContinuousPicture); //CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_AUTO);
+        previewBuilder.Set(CaptureRequest.ControlAfTrigger, (int)ControlAFTrigger.Cancel); //CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_START);
+        previewBuilder.Set(CaptureRequest.ControlAfRegions, new MeteringRectangle[] { focusAreaTouch });
+        previewSession.SetRepeatingRequest(previewBuilder.Build(), null, null);
+#else
+        //Now add a new AF trigger with focus region
+        previewBuilder.Set(CaptureRequest.ControlMode, (int)ControlMode.Auto);  //.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO);
+        previewBuilder.Set(CaptureRequest.ControlAfMode, (int)ControlAFMode.Auto); //CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_AUTO);
+        previewBuilder.Set(CaptureRequest.ControlAfTrigger, (int)ControlAFTrigger.Start); //CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_START);
+        previewBuilder.SetTag("FOCUS_TAG"); //we'll capture this later for resuming the preview
+        previewBuilder.Set(CaptureRequest.ControlAfRegions, new MeteringRectangle[] { focusAreaTouch });
+        //then we ask for a single request (not repeating!)
+        previewSession.Capture(previewBuilder.Build(), manualFocusEngagedCaptureCallback, null);
+        ManualFocusEngaged = true;
+#endif
+        previewBuilder.Set(CaptureRequest.ControlAfRegions, new MeteringRectangle[] { focusAreaTouch });
+        return viewFocusRect;
     }
 }
 
