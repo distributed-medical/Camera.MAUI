@@ -1001,12 +1001,13 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
                     focusPointOfInterest = PreviewLayer.CaptureDevicePointOfInterestForPoint(new CGPoint(rect.Center.X, rect.Center.Y));
                 }
                 captureDevice.FocusPointOfInterest = focusPointOfInterest;
-                _logger_LogTrace($"Converting from view coordinates too sensor coordinates");
-                _logger_LogTrace($"CameraView Size: {new Microsoft.Maui.Graphics.Size(cameraView.Width, cameraView.Height)}");
-                _logger_LogTrace($"CameraView Focus Point: {rect.Center} Sensor Relative Focus Rect: {focusPointOfInterest}  ");
+
+                _logger_LogTrace?.Invoke($"Converting from view coordinates too sensor coordinates");
+                _logger_LogTrace?.Invoke($"CameraView Size: {new Microsoft.Maui.Graphics.Size(cameraView.Width, cameraView.Height)}");
+                _logger_LogTrace?.Invoke($"CameraView Focus Point: {rect.Center} Sensor Relative Focus Rect: {focusPointOfInterest}  ");
 
                 var continousAutoFocusSupported = captureDevice.IsFocusModeSupported(AVCaptureFocusMode.ContinuousAutoFocus);
-                _logger_LogTrace($"{nameof(continousAutoFocusSupported)}: {continousAutoFocusSupported}");
+                _logger_LogTrace?.Invoke($"{nameof(continousAutoFocusSupported)}: {continousAutoFocusSupported}");
 
                 if (continousAutoFocusSupported)
                 {

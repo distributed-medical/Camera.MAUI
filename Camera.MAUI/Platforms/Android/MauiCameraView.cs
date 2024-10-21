@@ -1425,9 +1425,9 @@ internal class MauiCameraView: GridLayout
              sensorTouchAreaExtent);
 
 
-        _logger_LogTrace($"Converting from view coordinates too sensor coordinates");
-        _logger_LogTrace($"CameraView Size: {new Microsoft.Maui.Graphics.Size(this.Width, this.Height)} Sensor size: {new Microsoft.Maui.Graphics.Size(activeArraySize.Width(), activeArraySize.Height())}  ");
-        _logger_LogTrace($"CameraView Focus Rect: {rect} Sensor Focus Rect: {sensorRect}  ");
+        _logger_LogTrace?.Invoke($"Converting from view coordinates too sensor coordinates");
+        _logger_LogTrace?.Invoke($"CameraView Size: {new Microsoft.Maui.Graphics.Size(this.Width, this.Height)} Sensor size: {new Microsoft.Maui.Graphics.Size(activeArraySize.Width(), activeArraySize.Height())}  ");
+        _logger_LogTrace?.Invoke($"CameraView Focus Rect: {rect} Sensor Focus Rect: {sensorRect}  ");
 
 
         var focusAreaTouch = new MeteringRectangle(
