@@ -88,7 +88,11 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
         {
             try
             {
-                var deviceDescoverySession = AVCaptureDeviceDiscoverySession.Create(new AVCaptureDeviceType[] { AVCaptureDeviceType.BuiltInWideAngleCamera }, AVMediaTypes.Video, AVCaptureDevicePosition.Unspecified);
+                var deviceDescoverySession = AVCaptureDeviceDiscoverySession.Create(new AVCaptureDeviceType[] {
+                    AVCaptureDeviceType.BuiltInTripleCamera, 
+                    AVCaptureDeviceType.BuiltInDualCamera,
+                    AVCaptureDeviceType.BuiltInWideAngleCamera,
+                }, AVMediaTypes.Video, AVCaptureDevicePosition.Unspecified);
                 camDevices = deviceDescoverySession.Devices;
                 cameraView.Cameras.Clear();
                 foreach (var device in camDevices)
@@ -98,18 +102,24 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
                         AVCaptureDevicePosition.Back => CameraPosition.Back,
                         AVCaptureDevicePosition.Front => CameraPosition.Front,
                         _ => CameraPosition.Unknow
-                    };                    
-                    cameraView.Cameras.Add(new CameraInfo
+                    };
+                    //HO they will come in order as requested so if has triple camera it comes first
+                    //HO A triple camera will automatically change camera depending on distance this will automatically enable macro for instance
+                    //HO we add them if we dont have one for that camera position yet
+                    if(!cameraView.Cameras.Any(x => x.Position == position))
                     {
-                        Name = device.LocalizedName,
-                        DeviceId = device.UniqueID,
-                        Position = position,
-                        HasFlashUnit = device.FlashAvailable,
-                        MinZoomFactor = (float)device.MinAvailableVideoZoomFactor,
-                        MaxZoomFactor = (float)device.MaxAvailableVideoZoomFactor,
-                        HorizontalViewAngle = device.ActiveFormat.VideoFieldOfView * MathF.PI / 180f,
-                        AvailableResolutions = new() { new(3840, 2160), new(1920, 1080), new(1280, 720), new(640, 480), new(352, 288) }
-                    });
+                        cameraView.Cameras.Add(new CameraInfo
+                        {
+                            Name = device.LocalizedName,
+                            DeviceId = device.UniqueID,
+                            Position = position,
+                            HasFlashUnit = device.FlashAvailable,
+                            MinZoomFactor = (float)device.MinAvailableVideoZoomFactor,
+                            MaxZoomFactor = (float)device.MaxAvailableVideoZoomFactor,
+                            HorizontalViewAngle = device.ActiveFormat.VideoFieldOfView * MathF.PI / 180f,
+                            AvailableResolutions = new() { new(3840, 2160), new(1920, 1080), new(1280, 720), new(640, 480), new(352, 288) }
+                        });
+                    }
                 }
                 deviceDescoverySession.Dispose();
                 var aSession = AVCaptureDeviceDiscoverySession.Create(new AVCaptureDeviceType[] { AVCaptureDeviceType.BuiltInMicrophone }, AVMediaTypes.Audio, AVCaptureDevicePosition.Unspecified);
