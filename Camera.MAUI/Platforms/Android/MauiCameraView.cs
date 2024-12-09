@@ -1,5 +1,5 @@
 ﻿#define TAP_TO_FOCUS_CONTINIOUS
-
+//#define FLASH_INSTEAD_OF_TORCH_FOR_TAKE_PHOTO
 using Android.Content;
 using Android.Widget;
 using Java.Util.Concurrent;
@@ -21,10 +21,11 @@ using RectF = Android.Graphics.RectF;
 using Android.Content.Res;
 using Java.Util.Functions;
 using Microsoft.Extensions.Logging;
+using Camera2 = Android.Hardware.Camera2;
 
 namespace Camera.MAUI.Platforms.Android;
 
-internal class MauiCameraView: GridLayout
+internal class MauiCameraView : GridLayout
 {
     private readonly CameraView cameraView;
     private IExecutorService executorService;
@@ -37,6 +38,7 @@ internal class MauiCameraView: GridLayout
 
     private readonly TextureView textureView;
     public CameraCaptureSession previewSession;
+    public GenericCaptureCallback previewSessionCaptureCallback;
     public MediaRecorder mediaRecorder;
     private CaptureRequest.Builder previewBuilder;
     private CameraDevice cameraDevice;
@@ -62,11 +64,11 @@ internal class MauiCameraView: GridLayout
     //const int _useControlZoomRatio_ApiLevel = 100;
     readonly ILogger _logger;
     Action<string> _logger_LogTrace = null;
-
+    
     public MauiCameraView(Context context, CameraView cameraView) : base(context)
     {
         _logger = IPlatformApplication.Current.Services.GetService<ILogger<MauiCameraView>>();
-        if(_logger.IsEnabled(LogLevel.Trace))
+        if (_logger.IsEnabled(LogLevel.Trace))
         {
             _logger_LogTrace = (str) => _logger.LogTrace(str);
         }
@@ -144,7 +146,7 @@ internal class MauiCameraView: GridLayout
                     cameraInfo.AvailableResolutions.Add(new(352, 288));
                 }
                 cameraView.Cameras.Add(cameraInfo);
-                }
+            }
             if (OperatingSystem.IsAndroidVersionAtLeast(30))
             {
                 cameraView.Microphones.Clear();
@@ -280,9 +282,9 @@ internal class MauiCameraView: GridLayout
         texture.SetDefaultBufferSize(videoSize.Width, videoSize.Height);
 
         previewBuilder = cameraDevice.CreateCaptureRequest(recording ? CameraTemplate.Record : CameraTemplate.Preview);
-        if(_setFocusContext.CameraCharacteristics != null)
+        if (_setFocusContext.CameraCharacteristics != null)
         {
-            if(_setFocusContext.ControlMaxRegionsAf > 0)
+            if (_setFocusContext.ControlMaxRegionsAf > 0)
             { //HO get a fresh set of OrgAfRegions if they differ between recording and picture taking
                 _setFocusContext.OrgAfRegions = previewBuilder.Get(CaptureRequest.ControlAfRegions);
             }
@@ -310,13 +312,13 @@ internal class MauiCameraView: GridLayout
             previewBuilder.AddTarget(mediaRecorder.Surface);
         }
         //HO added;
-        if(recording && ((cameraView?.TorchEnabled)  ?? false))
+        if (recording && ((cameraView?.TorchEnabled) ?? false))
         {
             _logger_LogTrace?.Invoke($"{nameof(StartPreview)}: {nameof(cameraView.TorchEnabled)}: Turning it on");
             try
             {
                 previewBuilder.Set(CaptureRequest.ControlAeMode, (int)ControlAEMode.On);
-                previewBuilder.Set(CaptureRequest.FlashMode, cameraView.TorchEnabled ? (int)ControlAEMode.OnAutoFlash : (int)ControlAEMode.Off);
+                previewBuilder.Set(CaptureRequest.FlashMode, cameraView.TorchEnabled ? (int)Camera2.FlashMode.Torch : (int)Camera2.FlashMode.Off);
             }
             catch (Exception ex)
             { //HO happens sometimes investigate why later
@@ -345,14 +347,14 @@ internal class MauiCameraView: GridLayout
             _logger_LogTrace?.Invoke($"cameraDevice?.CreateCaptureSession FAILED: {ex.Message}");
         }
         _logger_LogTrace?.Invoke("_previewStartedTcs?.TrySetResult()");
-        lock(_previewStartedTcsLock)
+        lock (_previewStartedTcsLock)
         {
             _previewStartedTcs?.TrySetResult();
         }
     }
     private void UpdatePreview()
     {
-        lock(cameraDeviceLock)
+        lock (cameraDeviceLock)
         { //HO gotta cameraDeviceLock otherwise we sometimes get exception in SetZoomFactor cause StopCamera is called in parallell
             if (null == cameraDevice)
                 return;
@@ -364,6 +366,7 @@ internal class MauiCameraView: GridLayout
                 //videoSize = new Size(m.Width(), m.Height());
                 //AdjustAspectRatio(videoSize.Width, videoSize.Height);
                 AdjustAspectRatio(videoSize.Width, videoSize.Height);
+
                 SetZoomFactor(cameraView.ZoomFactor);
                 //previewSession.SetRepeatingRequest(previewBuilder.Build(), null, null);
                 if (recording)
@@ -414,10 +417,7 @@ internal class MauiCameraView: GridLayout
                         var imgReaderSize = ChooseMaxVideoSize(map.GetOutputSizes(Class.FromType(typeof(ImageReader))));
 
                         Rect sensorRect = (Rect)camChars.Get(CameraCharacteristics.SensorInfoActiveArraySize);
-                        if(_logger.IsEnabled(LogLevel.Trace))
-                        {
-                            _logger_LogTrace?.Invoke($"{nameof(StartCameraAsync)}: {nameof(sensorRect)}: w: {sensorRect.Width()} h: {sensorRect.Height()}");
-                        }
+                        _logger_LogTrace?.Invoke($"{nameof(StartCameraAsync)}: {nameof(sensorRect)}: w: {sensorRect.Width()} h: {sensorRect.Height()}");
                         if (PhotosResolution.Width != 0 && PhotosResolution.Height != 0)
                         {
                             imgReaderSize = new((int)PhotosResolution.Width, (int)PhotosResolution.Height);
@@ -459,7 +459,7 @@ internal class MauiCameraView: GridLayout
                         timer.Start();
 
                         started = true;
-                        
+
                         //HO Added UpdateTorch //so when we reenter camera page it will always light up again
                         UpdateTorch();
                     }
@@ -513,7 +513,7 @@ internal class MauiCameraView: GridLayout
     {
         _logger_LogTrace?.Invoke("StopCamera: before");
         CameraResult result = CameraResult.Success;
-        lock(cameraDeviceLock)
+        lock (cameraDeviceLock)
         {
             _logger_LogTrace?.Invoke("StopCamera: before: after cameraDeviceLock");
             if (initiated)
@@ -537,6 +537,12 @@ internal class MauiCameraView: GridLayout
                 catch { }
                 try
                 {
+                    previewSessionCaptureCallback?.Dispose();
+                    previewSessionCaptureCallback = null;
+                }
+                catch { }
+                try
+                {
                     previewSession?.StopRepeating();
                     previewSession?.AbortCaptures();
                     previewSession?.Dispose();
@@ -546,7 +552,7 @@ internal class MauiCameraView: GridLayout
                 {
                     cameraDevice?.Close();
                     cameraDevice?.Dispose();
-            } catch { }
+                } catch { }
                 previewSession = null;
                 cameraDevice = null;
                 previewBuilder = null;
@@ -697,113 +703,231 @@ internal class MauiCameraView: GridLayout
     }
 
 
-    internal async Task<System.IO.Stream> TakePhotoAsync(ImageFormat imageFormat, int? rotation)
+
+
+
+
+
+    enum AePreCaptureState { WaitingPreCapture, WaitingNotPreCapture, Done };
+
+
+internal async Task<System.IO.Stream> TakePhotoAsync(ImageFormat imageFormat, int? rotation)
+{
+    MemoryStream stream = null;
+    if (started && !recording)
     {
-        MemoryStream stream = null;
-        if (started && !recording)
-        {
-            CaptureRequest.Builder singleRequest = cameraDevice.CreateCaptureRequest(CameraTemplate.StillCapture);
+        CaptureRequest.Builder singleRequest = cameraDevice.CreateCaptureRequest(CameraTemplate.StillCapture);
             //singleRequest.AddTarget(imgReader.Surface);
 
             captureDone = false;
-            capturePhoto = null;
-            if (cameraView.Camera.HasFlashUnit)
+        capturePhoto = null;
+
+        if (cameraView.Camera.HasFlashUnit)
+        {
+            var flashMode = (Camera2.FlashMode)(int)singleRequest.Get(CaptureRequest.FlashMode);
+            _logger_LogTrace?.Invoke($"{nameof(TakePhotoAsync)}: pre: FlashMode: {flashMode}");
+            //LOG: 13:16:19.362 Camera.MAUI.Platforms.Android.MauiCameraView: Trace: TakePhotoAsync: pre: FlashMode: Off 
+
+            var controlAeMode = (ControlAEMode)(int)singleRequest.Get(CaptureRequest.ControlAeMode);
+            _logger_LogTrace?.Invoke($"{nameof(TakePhotoAsync)}: pre: ControlAEMode: {controlAeMode}");
+            //LOG: 13:16:19.373 Camera.MAUI.Platforms.Android.MauiCameraView: Trace: TakePhotoAsync: pre: ControlAEMode: On
+
+            switch (cameraView.FlashMode)
             {
-                switch (cameraView.FlashMode)
+                case FlashMode.Enabled:
+#if FLASH_INSTEAD_OF_TORCH_FOR_TAKE_PHOTO
+                    //HO OnAlwaysFlash must be set to get flash on still
+                    singleRequest.Set(CaptureRequest.ControlAeMode, (int)ControlAEMode.OnAlwaysFlash);
+                    singleRequest.Set(CaptureRequest.FlashMode, (int)Camera2.FlashMode.Off);
+
+#else
+                    singleRequest.Set(CaptureRequest.ControlAeMode, (int)ControlAEMode.On);
+                    singleRequest.Set(CaptureRequest.FlashMode, (int)Camera2.FlashMode.Torch);
+#endif
+                    break;
+                case FlashMode.Auto:
+                    singleRequest.Set(CaptureRequest.ControlAeMode, (int)ControlAEMode.OnAutoFlash);
+                    //singleRequest.Set(CaptureRequest.FlashMode, (int)Camera2.FlashMode.Off);
+                    break;
+                case FlashMode.Disabled:
+                    singleRequest.Set(CaptureRequest.ControlAeMode, (int)ControlAEMode.On);
+                    //singleRequest.Set(CaptureRequest.FlashMode, (int)Camera2.FlashMode.Off);
+                    break;
+            }
+        }
+
+        //HO changed
+        if (!rotation.HasValue)
+        {
+            IWindowManager windowManager = context.GetSystemService(Context.WindowService).JavaCast<IWindowManager>();
+            var displayRotation = windowManager.DefaultDisplay.Rotation;
+            rotation = GetJpegOrientation(displayRotation);
+        }
+        else
+        {
+            var displayRotation = rotation switch {
+                90 => SurfaceOrientation.Rotation90,
+                180 => SurfaceOrientation.Rotation180,
+                270 => SurfaceOrientation.Rotation270,
+                _ => SurfaceOrientation.Rotation0
+            };
+            rotation = GetJpegOrientation(displayRotation);
+        }
+
+        singleRequest.Set(CaptureRequest.JpegOrientation, rotation);
+
+        var destZoom = Math.Clamp(cameraView.ZoomFactor, 1, cameraView.Camera.MaxZoomFactor);
+        if (OperatingSystem.IsAndroidVersionAtLeast(_useControlZoomRatio_ApiLevel))
+        {
+            singleRequest.Set(CaptureRequest.ControlZoomRatio, destZoom);
+        }
+        else
+        {
+            Rect sensorRect = (Rect)camChars.Get(CameraCharacteristics.SensorInfoActiveArraySize);
+            Rect zoomedSensorArea = CalculateScalerRect(sensorRect, destZoom);
+            singleRequest.Set(CaptureRequest.ScalerCropRegion, zoomedSensorArea);
+        }
+
+        singleRequest.AddTarget(imgReader.Surface);
+
+
+
+        EventHandler<CaptureCompletedArgs> onCaptureCompleted = null;
+        EventHandler<CaptureFailedArgs> onCaptureFailed = null;
+
+        AePreCaptureState aePreCaptureState = AePreCaptureState.WaitingPreCapture;
+
+        try
+        {
+#if FLASH_INSTEAD_OF_TORCH_FOR_TAKE_PHOTO
+            if (cameraView.Camera.HasFlashUnit && cameraView.FlashMode == FlashMode.Enabled)
+            {
+                var aeConvergedTcs = new TaskCompletionSource();
+
+                previewBuilder.Set(CaptureRequest.FlashMode, (int)Camera2.FlashMode.Off);
+                _logger_LogTrace?.Invoke($"{nameof(TakePhotoAsync)}: 10: Flash: Off--------------------------------------------------------");
+
+                previewBuilder.Set(CaptureRequest.ControlAeMode, (int)Camera2.ControlAEMode.OnAlwaysFlash);
+                previewBuilder.Set(CaptureRequest.FlashMode, (int)Camera2.FlashMode.Off);
+
+                { //HO first request turn off the flash and wait for it to be handled
+                  //HO this is vital or the next step wont work (ae precapture)
+                    var flashIsOffTcs = new TaskCompletionSource();
+                    previewBuilder.SetTag("FLASH_OFF");
+
+                    EventHandler<CaptureCompletedArgs> onCaptureCompleted_flashOff = new EventHandler<CaptureCompletedArgs>((a, args) => {
+                        var requestTag = (string)args.Request.Tag;
+                        if (requestTag == "FLASH_OFF")
+                        {
+                            previewBuilder.SetTag("");
+                            previewSession.SetRepeatingRequest(previewBuilder.Build(), previewSessionCaptureCallback, backgroundHandler);
+                            flashIsOffTcs.TrySetResult();
+                        }
+                        else
+                        {
+                            _logger_LogTrace.Invoke($"{nameof(TakePhotoAsync)}: 11: no FLASH_OFF");
+                        }
+                    });
+
+                    previewSessionCaptureCallback.CaptureCompleted += onCaptureCompleted_flashOff;
+                    previewSession.SetRepeatingRequest(previewBuilder.Build(), previewSessionCaptureCallback, backgroundHandler);
+                    await flashIsOffTcs.Task;
+                    previewSessionCaptureCallback.CaptureCompleted -= onCaptureCompleted_flashOff;
+                }
                 {
-                    case FlashMode.Auto:
-                        singleRequest.Set(CaptureRequest.FlashMode, (int)ControlAEMode.OnAutoFlash);
-                        break;
-                    case FlashMode.Enabled:
-                        singleRequest.Set(CaptureRequest.FlashMode, (int)ControlAEMode.On);
-                        break;
-                    case FlashMode.Disabled:
-                        singleRequest.Set(CaptureRequest.FlashMode, (int)ControlAEMode.Off);
-                        break;
+
+                    _logger_LogTrace?.Invoke($"{nameof(TakePhotoAsync)} Flash: aeMode {(ControlAEMode)(int)previewBuilder.Get(CaptureRequest.ControlAeMode)}");
+
+
+                    previewBuilder.Set(CaptureRequest.ControlAePrecaptureTrigger, (int)ControlAEPrecaptureTrigger.Start);
+
+                    onCaptureCompleted = new EventHandler<CaptureCompletedArgs>((object o, CaptureCompletedArgs captureCompletedArgs) =>
+                    {
+
+                        var aeState = (ControlAEState?)(int?)captureCompletedArgs.Result.Get(CaptureResult.ControlAeState);
+                        _logger_LogTrace?.Invoke($"{nameof(TakePhotoAsync)}: aeState {aeState}");
+
+                        if (aePreCaptureState == AePreCaptureState.WaitingPreCapture && aeState.GetValueOrDefault(ControlAEState.Precapture) == ControlAEState.Precapture)
+                        {
+                            aePreCaptureState = AePreCaptureState.WaitingNotPreCapture;
+                            _logger_LogTrace?.Invoke($"{nameof(TakePhotoAsync)}: {nameof(AePreCaptureState.WaitingPreCapture)}: aeState {aeState}");
+                        }
+                        if (aePreCaptureState == AePreCaptureState.WaitingNotPreCapture && aeState.GetValueOrDefault(ControlAEState.Inactive) != ControlAEState.Precapture)
+                        {
+                            aePreCaptureState = AePreCaptureState.Done;
+                            previewSession.Capture(previewBuilder.Build(), null, null);
+                            _logger_LogTrace?.Invoke($"{nameof(TakePhotoAsync)}: {nameof(AePreCaptureState.WaitingNotPreCapture)}: aeState {aeState}");
+                            aeConvergedTcs.TrySetResult();
+                        }
+                    });
+
+                    onCaptureFailed = new EventHandler<CaptureFailedArgs>((object o, CaptureFailedArgs captureFailedArgs) =>
+                    {
+                        aeConvergedTcs.TrySetResult();
+                    });
+
+                    previewSessionCaptureCallback.CaptureCompleted += onCaptureCompleted;
+                    previewSessionCaptureCallback.CaptureFailed += onCaptureFailed;
+
+                    previewSession.Capture(previewBuilder.Build(), previewSessionCaptureCallback, backgroundHandler);
+                    await aeConvergedTcs.Task;
+                    _logger_LogTrace?.Invoke($"{nameof(TakePhotoAsync)}: 13: precapture done");
                 }
             }
+#endif
+            previewSession.Capture(singleRequest.Build(), null, null);
+            while (!captureDone) await Task.Delay(50);
+            if (capturePhoto != null)
+            {
 
-            //HO changed
-            if(!rotation.HasValue )
-            {
-                IWindowManager windowManager = context.GetSystemService(Context.WindowService).JavaCast<IWindowManager>();
-                var displayRotation = windowManager.DefaultDisplay.Rotation;
-                rotation = GetJpegOrientation(displayRotation);
-            }
-            else
-            {
-                var displayRotation = rotation switch {
-                    90 => SurfaceOrientation.Rotation90,
-                    180 => SurfaceOrientation.Rotation180,
-                    270 => SurfaceOrientation.Rotation270,
-                    _ => SurfaceOrientation.Rotation0
-                }; 
-                rotation = GetJpegOrientation(displayRotation);
-            }
-
-            singleRequest.Set(CaptureRequest.JpegOrientation, rotation);
-
-            var destZoom = Math.Clamp(cameraView.ZoomFactor, 1, cameraView.Camera.MaxZoomFactor);
-            if (OperatingSystem.IsAndroidVersionAtLeast(_useControlZoomRatio_ApiLevel))
-            {
-                singleRequest.Set(CaptureRequest.ControlZoomRatio, destZoom);
-            }
-            else
-            {
-                Rect sensorRect = (Rect)camChars.Get(CameraCharacteristics.SensorInfoActiveArraySize);
-                Rect zoomedSensorArea = CalculateScalerRect(sensorRect, destZoom);
-                singleRequest.Set(CaptureRequest.ScalerCropRegion, zoomedSensorArea);
-            }
-
-            singleRequest.AddTarget(imgReader.Surface);
-            try
-            {
-                var captureRequest = singleRequest.Build();
-                previewSession.Capture(captureRequest, null, null);
-                while (!captureDone) await Task.Delay(50);
-                if (capturePhoto != null)
+                _logger_LogTrace?.Invoke($"{nameof(TakePhotoAsync)}: 20: TextureView: {textureView.ToString()} ScaleX:{textureView.ScaleX} ScaleY: {textureView.ScaleY}");
+                if (textureView.ScaleX == -1 || imageFormat != ImageFormat.JPEG)
                 {
-
-                    _logger_LogTrace?.Invoke($"{nameof(TakePhotoAsync)}: 20: TextureView: {textureView.ToString()} ScaleX:{textureView.ScaleX} ScaleY: {textureView.ScaleY}");
-                    if (textureView.ScaleX == -1 || imageFormat != ImageFormat.JPEG)
+                    Bitmap bitmap = BitmapFactory.DecodeByteArray(capturePhoto, 0, capturePhoto.Length);
+                    if (bitmap != null)
                     {
-                        Bitmap bitmap = BitmapFactory.DecodeByteArray(capturePhoto, 0, capturePhoto.Length);
-                        if (bitmap != null)
+                        if (textureView.ScaleX == -1)
                         {
-                            if (textureView.ScaleX == -1)
-                            {
-                                Matrix matrix = new();
-                                matrix.PreRotate(rotation.Value);
-                                matrix.PostScale(-1, 1);
-                                var prevBitmap = bitmap;
-                                bitmap = Bitmap.CreateBitmap(bitmap, 0, 0, bitmap.Width, bitmap.Height, matrix, false);
-                                prevBitmap.Dispose();
-                            }
-                            var iformat = imageFormat switch
-                            {
-                                ImageFormat.JPEG => Bitmap.CompressFormat.Jpeg,
-                                _ => Bitmap.CompressFormat.Png
-                            };
-                            stream = new();
-                            bitmap.Compress(iformat, 100, stream);
-                            stream.Position = 0;
+                            Matrix matrix = new();
+                            matrix.PreRotate(rotation.Value);
+                            matrix.PostScale(-1, 1);
+                            var prevBitmap = bitmap;
+                            bitmap = Bitmap.CreateBitmap(bitmap, 0, 0, bitmap.Width, bitmap.Height, matrix, false);
+                            prevBitmap.Dispose();
                         }
-                    }
-                    else
-                    {
+                        var iformat = imageFormat switch
+                        {
+                            ImageFormat.JPEG => Bitmap.CompressFormat.Jpeg,
+                            _ => Bitmap.CompressFormat.Png
+                        };
                         stream = new();
-                        stream.Write(capturePhoto);
+                        bitmap.Compress(iformat, 100, stream);
                         stream.Position = 0;
                     }
                 }
-            }
-            catch(Java.Lang.Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine(ex.StackTrace);
+                else
+                {
+                    stream = new();
+                    stream.Write(capturePhoto);
+                    stream.Position = 0;
+                }
             }
         }
-        return stream;
+        catch(Java.Lang.Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine(ex.StackTrace);
+        }
+        finally
+        {
+            if(onCaptureCompleted != null)
+            {
+                previewSessionCaptureCallback.CaptureCompleted -= onCaptureCompleted;
+                previewSessionCaptureCallback.CaptureFailed -= onCaptureFailed;
+            }
+        }
     }
+    return stream;
+}
     internal ImageSource GetSnapShot(ImageFormat imageFormat, bool auto = false)
     {
         ImageSource result = null;
@@ -907,8 +1031,9 @@ internal class MauiCameraView: GridLayout
             if (started)
             {
                 _logger_LogTrace?.Invoke($"{nameof(UpdateTorch)}: {nameof(previewBuilder)}: {(previewBuilder != null)}  {nameof(previewSession)}: {(previewSession != null)} ");
+                //OnePlus, Samsung does not work with torch if OnAlwaysFlash is set
                 previewBuilder.Set(CaptureRequest.ControlAeMode, (int)ControlAEMode.On);
-                previewBuilder.Set(CaptureRequest.FlashMode, cameraView.TorchEnabled ? (int)ControlAEMode.OnAutoFlash : (int)ControlAEMode.Off);
+                previewBuilder.Set(CaptureRequest.FlashMode, cameraView.TorchEnabled ? (int)Camera2.FlashMode.Torch : (int)Camera2.FlashMode.Off);
                 previewSession.SetRepeatingRequest(previewBuilder.Build(), null, null);
             }
             else if (initiated)
@@ -1235,6 +1360,7 @@ internal class MauiCameraView: GridLayout
             lock(cameraView.cameraDeviceLock)
             { 
                 _logger_LogTrace?.Invoke($"OnConfigured: begin");
+                cameraView.previewSessionCaptureCallback = new GenericCaptureCallback(cameraView, _logger);
                 cameraView.previewSession = session;
                 cameraView.UpdatePreview();
                 _logger_LogTrace?.Invoke("cameraView._onConfiguredTcs.TrySetResult(); PRE");
@@ -1438,7 +1564,11 @@ internal class MauiCameraView: GridLayout
              MeteringRectangle.MeteringWeightMax
         );
 
-#if !TAP_TO_FOCUS_CONTINIOUS
+
+#if TAP_TO_FOCUS_CONTINIOUS
+        previewBuilder.Set(CaptureRequest.ControlAfRegions, new MeteringRectangle[] { focusAreaTouch });
+        previewSession.SetRepeatingRequest(previewBuilder.Build(), null, null);
+#else
         //first stop the existing repeating request
         previewSession.StopRepeating();
 
@@ -1447,12 +1577,8 @@ internal class MauiCameraView: GridLayout
         previewBuilder.Set(CaptureRequest.ControlAfMode, (int)ControlAFMode.Off);//CONTROL_AF_MODE_OFF);
         var manualFocusEngagedCaptureCallback = new ManualFocusEngaged_CaptureCallback(this, _logger, _setFocusContext);
         previewSession.Capture(previewBuilder.Build(), manualFocusEngagedCaptureCallback, null);
-#endif
 
-#if TAP_TO_FOCUS_CONTINIOUS
-        previewBuilder.Set(CaptureRequest.ControlAfRegions, new MeteringRectangle[] { focusAreaTouch });
-        previewSession.SetRepeatingRequest(previewBuilder.Build(), null, null);
-#else
+
         //Now add a new AF trigger with focus region
         previewBuilder.Set(CaptureRequest.ControlMode, (int)ControlMode.Auto);  //.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO);
         previewBuilder.Set(CaptureRequest.ControlAfMode, (int)ControlAFMode.Auto); //CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_AUTO);
