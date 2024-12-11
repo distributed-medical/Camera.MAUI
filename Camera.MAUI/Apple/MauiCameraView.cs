@@ -441,8 +441,10 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
 
         photoSettings.FlashMode = cameraView.FlashMode switch
         {
-            FlashMode.Auto => AVCaptureFlashMode.Auto,
-            FlashMode.Enabled => AVCaptureFlashMode.On,
+            FlashMode.Auto => cameraView.TorchEnabled ? AVCaptureFlashMode.Off : AVCaptureFlashMode.Auto,
+            FlashMode.Enabled => cameraView.TorchEnabled ? AVCaptureFlashMode.Off : AVCaptureFlashMode.On,
+            //FlashMode.Auto => AVCaptureFlashMode.Auto,
+            //FlashMode.Enabled => AVCaptureFlashMode.On,
             _ => AVCaptureFlashMode.Off
         };
         photoOrSnapshotOutput.CapturePhoto(photoSettings, this);
