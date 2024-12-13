@@ -795,11 +795,11 @@ internal async Task<System.IO.Stream> TakePhotoAsync(ImageFormat imageFormat, in
         EventHandler<CaptureCompletedArgs> onCaptureCompleted = null;
         EventHandler<CaptureFailedArgs> onCaptureFailed = null;
 
-        AePreCaptureState aePreCaptureState = AePreCaptureState.WaitingPreCapture;
 
         try
         {
 #if FLASH_INSTEAD_OF_TORCH_FOR_TAKE_PHOTO
+            AePreCaptureState aePreCaptureState = AePreCaptureState.WaitingPreCapture;
             if (cameraView.Camera.HasFlashUnit && cameraView.FlashMode == FlashMode.Enabled)
             {
                 var aeConvergedTcs = new TaskCompletionSource();
@@ -875,7 +875,7 @@ internal async Task<System.IO.Stream> TakePhotoAsync(ImageFormat imageFormat, in
                 }
             }
 #endif
-            previewSession.Capture(singleRequest.Build(), null, null);
+                previewSession.Capture(singleRequest.Build(), null, null);
             while (!captureDone) await Task.Delay(50);
             if (capturePhoto != null)
             {
