@@ -756,10 +756,10 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
     public override void LayoutSubviews()
     {
         base.LayoutSubviews();
-        CATransform3D transform = CATransform3D.MakeRotation(0, 0, 0, 1.0f);
-
         //HO commented away we always do portrait
         /*
+        CATransform3D transform = CATransform3D.MakeRotation(0, 0, 0, 1.0f);
+
         switch (UIDevice.CurrentDevice.Orientation)
         {
             case UIDeviceOrientation.Portrait:
@@ -777,9 +777,9 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
                 transform = CATransform3D.MakeRotation((nfloat)rotation2, 0, 0, 1.0f);
                 break;
         }
-        */
 
         PreviewLayer.Transform = transform;
+        */
         PreviewLayer.Frame = Layer.Bounds;
     }
 
