@@ -62,8 +62,9 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
         };
         PreviewLayer = new(captureSession)
         {
-            VideoGravity = AVLayerVideoGravity.ResizeAspectFill
+                VideoGravity = cameraView.AspectFitPreview ? AVLayerVideoGravity.ResizeAspect : AVLayerVideoGravity.ResizeAspectFill
         };
+
         Layer.AddSublayer(PreviewLayer);
         videoDataOutput = new AVCaptureVideoDataOutput();
         var videoSettings = NSDictionary.FromObjectAndKey(
