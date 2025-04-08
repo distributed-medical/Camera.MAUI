@@ -40,6 +40,7 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
     private bool photoTaken = false;
     private bool photoError = false;
     private UIImage photo;
+    private NSDictionary photo_metadata;
     private readonly NSObject orientationObserver;
 
     readonly ILogger _logger;
@@ -473,22 +474,74 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
                 UIDeviceOrientation.PortraitUpsideDown => UIImageOrientation.Left,
                 _ => UIImageOrientation.Right
             };
-            if (photo.Orientation != orientation)
-                photo = UIImage.FromImage(photo.CGImage, photo.CurrentScale, orientation);
-            MemoryStream stream = new();
-            switch (imageFormat)
-            {
-                case ImageFormat.JPEG:
-                    photo.AsJPEG().AsStream().CopyTo(stream);
-                    break;
-                default:
-                    photo.AsPNG().AsStream().CopyTo(stream);
-                    break;
-            }
-            stream.Position = 0;
+
+
+            //HO CurrentScale was used before when orientation was set with: photo = UIImage.FromImage(photo.CGImage, photo.CurrentScale, orientation);
+            //HO but it is always one even if you zoom
+            //LOG: 13:25:44.599 Camera.MAUI.Platforms.Apple.MauiCameraView: Trace: TakePhotoAsync: CurrentScale: 1
+            _logger_LogTrace?.Invoke($"{nameof(TakePhotoAsync)}: {nameof(photo.CurrentScale)}: {photo.CurrentScale}");
+
+            var stream = AddMetadataToImageReturnAsMemoryStream(photo, photo_metadata , orientation, imageFormat);
             return stream;
         }
     }
+
+
+    private MemoryStream AddMetadataToImageReturnAsMemoryStream(UIImage image, NSDictionary metadataIn, UIImageOrientation orientation, ImageFormat imageFormat)
+    {
+        var imageData = imageFormat switch
+        {
+            ImageFormat.JPEG => image.AsJPEG(),
+            ImageFormat.PNG => image.AsPNG(),
+            _ => image.AsPNG()
+        };
+
+        var source = ImageIO.CGImageSource.FromData(imageData);
+        var type = source.TypeIdentifier;// .TypeIdentifiers[0];
+
+        _logger.LogInformation($"{nameof(AddMetadataToImageReturnAsMemoryStream)}: {type}");
+
+        var destinationData = new NSMutableData();
+        var destination = ImageIO.CGImageDestination.Create(destinationData, type, 1);
+
+
+        var metadata = new NSMutableDictionary(metadataIn ?? new NSDictionary());
+
+
+
+        _logger_LogTrace?.Invoke($"{nameof(AddMetadataToImageReturnAsMemoryStream)}: {nameof(UIImageOrientation)} {orientation}");
+
+        var cIImageOrientation = orientation switch
+        { 
+            UIImageOrientation.Up => CoreImage.CIImageOrientation.TopLeft,
+            UIImageOrientation.Down => CoreImage.CIImageOrientation.BottomRight,
+            UIImageOrientation.Left => CoreImage.CIImageOrientation.LeftBottom,
+            UIImageOrientation.Right => CoreImage.CIImageOrientation.RightTop,
+            _ => CoreImage.CIImageOrientation.RightTop,
+        };
+
+        _logger_LogTrace?.Invoke($"{nameof(AddMetadataToImageReturnAsMemoryStream)}: {nameof(cIImageOrientation)} {cIImageOrientation}");
+
+        //HO update orientation
+        metadata[ImageIO.CGImageProperties.Orientation] = new NSNumber((int)cIImageOrientation);
+
+        //HO add updated metadata
+        //destination.AddImage(source.CreateImage(0, null), metadata);
+        destination.AddImage(source, 0,  metadata);
+        destination.Close();
+
+        MemoryStream stream = new();
+
+        destinationData.AsStream().CopyTo(stream);
+        stream.Position = 0;
+
+        photo_metadata.Dispose();
+        photo.Dispose();
+        metadata.Dispose();
+        return stream;
+    }
+
+
     public ImageSource GetSnapShot(ImageFormat imageFormat, bool auto = false)
     {
         ImageSource result = null;
@@ -723,6 +776,7 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
         }
 
         NSData imageData = AVCapturePhotoOutput.GetJpegPhotoDataRepresentation(photoSampleBuffer, previewPhotoSampleBuffer);
+        photo_metadata = photoSampleBuffer?.GetAttachments(CMAttachmentMode.ShouldPropagate);
 
         photo = new UIImage(imageData);
 

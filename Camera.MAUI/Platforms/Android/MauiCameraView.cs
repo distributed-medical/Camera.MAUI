@@ -825,7 +825,7 @@ internal async Task<System.IO.Stream> TakePhotoAsync(ImageFormat imageFormat, in
                         }
                         else
                         {
-                            _logger_LogTrace.Invoke($"{nameof(TakePhotoAsync)}: 11: no FLASH_OFF");
+                            _logger_LogTrace?.Invoke($"{nameof(TakePhotoAsync)}: 11: no FLASH_OFF");
                         }
                     });
 
