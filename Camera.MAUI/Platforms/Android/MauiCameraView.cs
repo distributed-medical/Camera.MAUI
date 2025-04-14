@@ -272,84 +272,100 @@ internal class MauiCameraView : GridLayout
         return result;
     }
 
-    
+    internal void ShowToast(string message, ToastLength duration = ToastLength.Long)
+    {
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            Toast.MakeText(context, message, duration)?.Show();
+        });
+    }
+
+
     private void StartPreview()
     {
-        _logger_LogTrace?.Invoke($"{nameof(StartPreview)}: entered");
-
-        while (textureView.SurfaceTexture == null || !textureView.IsAvailable) Thread.Sleep(100);
-        SurfaceTexture texture = textureView.SurfaceTexture;
-        texture.SetDefaultBufferSize(videoSize.Width, videoSize.Height);
-
-        previewBuilder = cameraDevice.CreateCaptureRequest(recording ? CameraTemplate.Record : CameraTemplate.Preview);
-        if (_setFocusContext.CameraCharacteristics != null)
-        {
-            if (_setFocusContext.ControlMaxRegionsAf > 0)
-            { //HO get a fresh set of OrgAfRegions if they differ between recording and picture taking
-                _setFocusContext.OrgAfRegions = previewBuilder.Get(CaptureRequest.ControlAfRegions);
-            }
-        }
-
-        //HO Old Capture.Android
-        //currentCaptureRequest = cameraDevice.CreateCaptureRequest(CameraTemplate.Preview);
-        //currentCaptureRequest.Set(CaptureRequest.ControlAfMode, (int)ControlAFMode.ContinuousVideo);
-        //currentCaptureRequest.Set(CaptureRequest.ControlAeMode, (int)ControlAEMode.On);
-        var surfaces = new List<OutputConfiguration>();
-        var surfaces26 = new List<Surface>();
-        var previewSurface = new Surface(texture);
-        surfaces.Add(new OutputConfiguration(previewSurface));
-        surfaces26.Add(previewSurface);
-        previewBuilder.AddTarget(previewSurface);
-        if (imgReader != null)
-        {
-            surfaces.Add(new OutputConfiguration(imgReader.Surface));
-            surfaces26.Add(imgReader.Surface);
-        }
-        if (mediaRecorder != null)
-        {
-            surfaces.Add(new OutputConfiguration(mediaRecorder.Surface));
-            surfaces26.Add(mediaRecorder.Surface);
-            previewBuilder.AddTarget(mediaRecorder.Surface);
-        }
-        //HO added;
-        if (recording && ((cameraView?.TorchEnabled) ?? false))
-        {
-            _logger_LogTrace?.Invoke($"{nameof(StartPreview)}: {nameof(cameraView.TorchEnabled)}: Turning it on");
-            try
-            {
-                previewBuilder.Set(CaptureRequest.ControlAeMode, (int)ControlAEMode.On);
-                previewBuilder.Set(CaptureRequest.FlashMode, cameraView.TorchEnabled ? (int)Camera2.FlashMode.Torch : (int)Camera2.FlashMode.Off);
-            }
-            catch (Exception ex)
-            { //HO happens sometimes investigate why later
-                _logger.LogWarning(ex, "calling UpdateTorch from StartCameraAsync failed");
-            }
-        }
-
-        sessionCallback = new PreviewCaptureStateCallback(this, _logger, _logger_LogTrace);
         try
         {
-            if (OperatingSystem.IsAndroidVersionAtLeast(28))
+            _logger_LogTrace?.Invoke($"{nameof(StartPreview)}: entered");
+
+            while (textureView.SurfaceTexture == null || !textureView.IsAvailable) Thread.Sleep(100);
+            SurfaceTexture texture = textureView.SurfaceTexture;
+            texture.SetDefaultBufferSize(videoSize.Width, videoSize.Height);
+
+            previewBuilder = cameraDevice.CreateCaptureRequest(recording ? CameraTemplate.Record : CameraTemplate.Preview);
+            if (_setFocusContext.CameraCharacteristics != null)
             {
-                SessionConfiguration config = new((int)SessionType.Regular, surfaces, executorService, sessionCallback);
-                cameraDevice?.CreateCaptureSession(config);
+                if (_setFocusContext.ControlMaxRegionsAf > 0)
+                { //HO get a fresh set of OrgAfRegions if they differ between recording and picture taking
+                    _setFocusContext.OrgAfRegions = previewBuilder.Get(CaptureRequest.ControlAfRegions);
+                }
             }
-            else
+
+            //HO Old Capture.Android
+            //currentCaptureRequest = cameraDevice.CreateCaptureRequest(CameraTemplate.Preview);
+            //currentCaptureRequest.Set(CaptureRequest.ControlAfMode, (int)ControlAFMode.ContinuousVideo);
+            //currentCaptureRequest.Set(CaptureRequest.ControlAeMode, (int)ControlAEMode.On);
+            var surfaces = new List<OutputConfiguration>();
+            var surfaces26 = new List<Surface>();
+            var previewSurface = new Surface(texture);
+            surfaces.Add(new OutputConfiguration(previewSurface));
+            surfaces26.Add(previewSurface);
+            previewBuilder.AddTarget(previewSurface);
+            if (imgReader != null)
             {
+                surfaces.Add(new OutputConfiguration(imgReader.Surface));
+                surfaces26.Add(imgReader.Surface);
+            }
+            if (mediaRecorder != null)
+            {
+                surfaces.Add(new OutputConfiguration(mediaRecorder.Surface));
+                surfaces26.Add(mediaRecorder.Surface);
+                previewBuilder.AddTarget(mediaRecorder.Surface);
+            }
+            //HO added;
+            if (recording && ((cameraView?.TorchEnabled) ?? false))
+            {
+                _logger_LogTrace?.Invoke($"{nameof(StartPreview)}: {nameof(cameraView.TorchEnabled)}: Turning it on");
+                try
+                {
+                    previewBuilder.Set(CaptureRequest.ControlAeMode, (int)ControlAEMode.On);
+                    previewBuilder.Set(CaptureRequest.FlashMode, cameraView.TorchEnabled ? (int)Camera2.FlashMode.Torch : (int)Camera2.FlashMode.Off);
+                }
+                catch (Exception ex)
+                { //HO happens sometimes investigate why later
+                    _logger.LogWarning(ex, "calling UpdateTorch from StartCameraAsync failed");
+                }
+            }
+
+            sessionCallback = new PreviewCaptureStateCallback(this, _logger, _logger_LogTrace);
+            try
+            {
+                if (OperatingSystem.IsAndroidVersionAtLeast(28))
+                {
+                    SessionConfiguration config = new((int)SessionType.Regular, surfaces, executorService, sessionCallback);
+                    cameraDevice?.CreateCaptureSession(config);
+                }
+                else
+                {
 #pragma warning disable CS0618 // El tipo o el miembro están obsoletos
-                cameraDevice.CreateCaptureSession(surfaces26, sessionCallback, null);
+                    cameraDevice.CreateCaptureSession(surfaces26, sessionCallback, null);
 #pragma warning restore CS0618 // El tipo o el miembro están obsoletos
+                }
+            }
+            catch (Exception ex)
+            { //HO Happens sometimes when going back from preview when user has not saved and discard video is done
+              // Should be investigated further
+                _logger_LogTrace?.Invoke($"cameraDevice?.CreateCaptureSession FAILED: {ex.Message}");
+            }
+            _logger_LogTrace?.Invoke("_previewStartedTcs?.TrySetResult()");
+            lock (_previewStartedTcsLock)
+            {
+                _previewStartedTcs?.TrySetResult();
             }
         }
         catch (Exception ex)
-        { //HO Happens sometimes when going back from preview when user has not saved and discard video is done
-            // Should be investigated further
-            _logger_LogTrace?.Invoke($"cameraDevice?.CreateCaptureSession FAILED: {ex.Message}");
-        }
-        _logger_LogTrace?.Invoke("_previewStartedTcs?.TrySetResult()");
-        lock (_previewStartedTcsLock)
-        {
-            _previewStartedTcs?.TrySetResult();
+        { //HO happens sometimes on pixel7
+            _logger.LogWarning(ex, $"{nameof(StartPreview)}: {ex.Message}");
+            ShowToast(ex.Message, ToastLength.Long);
         }
     }
     private void UpdatePreview()
